@@ -90,7 +90,8 @@ abstract class IrExportCheckerVisitor(private val compatibleMode: Boolean) : Kot
 
             val selfExported = speciallyExported || visibility == null || visibility.isPubliclyVisible()
 
-            return selfExported && parent.accept(this@CompatibleChecker, null)
+            return selfExported &&
+                    (this is IrClass && !isInner || parent.accept(this@CompatibleChecker, null))
         }
 
         private fun DescriptorVisibility.isPubliclyVisible(): Boolean = isPublicAPI || this === DescriptorVisibilities.INTERNAL
