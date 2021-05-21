@@ -159,6 +159,7 @@ object FirSessionFactory {
                 )
             }
 
+            val dependenciesSymbolProvider = FirDependenciesSymbolProviderImpl(this)
             register(
                 FirSymbolProvider::class,
                 FirCompositeSymbolProvider(
@@ -167,9 +168,14 @@ object FirSessionFactory {
                         firProvider.symbolProvider,
                         symbolProviderForBinariesFromIncrementalCompilation,
                         JavaSymbolProvider(this, moduleData, project, scope),
-                        FirDependenciesSymbolProviderImpl(this),
+                        dependenciesSymbolProvider,
                     )
                 )
+            )
+
+            register(
+                FirDependenciesSymbolProviderImpl::class,
+                dependenciesSymbolProvider
             )
 
             FirSessionConfigurator(this).apply {
@@ -177,7 +183,6 @@ object FirSessionFactory {
                 registerJvmCheckers()
                 init()
             }.configure()
-
             PsiElementFinder.EP.getPoint(project).registerExtension(FirJavaElementFinder(this, project), project)
         }
     }
