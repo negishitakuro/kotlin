@@ -1530,6 +1530,14 @@ internal class NoTypeArgumentsOnRhsImpl(
     override val firDiagnostic: FirPsiDiagnostic by weakRef(firDiagnostic)
 }
 
+internal class OuterClassArgumentsRequiredImpl(
+    override val outer: KtNamedClassOrObjectSymbol,
+    firDiagnostic: FirPsiDiagnostic,
+    override val token: ValidityToken,
+) : KtFirDiagnostic.OuterClassArgumentsRequired(), KtAbstractFirDiagnostic<PsiElement> {
+    override val firDiagnostic: FirPsiDiagnostic by weakRef(firDiagnostic)
+}
+
 internal class TypeParametersInObjectImpl(
     firDiagnostic: FirPsiDiagnostic,
     override val token: ValidityToken,

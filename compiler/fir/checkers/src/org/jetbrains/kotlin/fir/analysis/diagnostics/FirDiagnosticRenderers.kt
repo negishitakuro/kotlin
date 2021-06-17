@@ -11,8 +11,9 @@ import org.jetbrains.kotlin.diagnostics.rendering.Renderer
 import org.jetbrains.kotlin.fir.FirElement
 import org.jetbrains.kotlin.fir.FirRenderer
 import org.jetbrains.kotlin.fir.declarations.*
-import org.jetbrains.kotlin.fir.declarations.utils.classId
+import org.jetbrains.kotlin.fir.declarations.utils.*
 import org.jetbrains.kotlin.fir.render
+import org.jetbrains.kotlin.fir.resolve.dfa.cfg.isLocalClassOrAnonymousObject
 import org.jetbrains.kotlin.fir.symbols.FirBasedSymbol
 import org.jetbrains.kotlin.fir.symbols.impl.FirCallableSymbol
 import org.jetbrains.kotlin.fir.symbols.impl.FirClassLikeSymbol
@@ -88,6 +89,25 @@ object FirDiagnosticRenderers {
         val name = firClass.classId.relativeClassName.asString()
         val classOrObject = if (firClass is FirRegularClass) "Class" else "Object"
         "$classOrObject $name"
+    }
+
+    val RENDER_CLASS_OR_OBJECT_NAME = Renderer { firClassLike: FirClassLikeDeclaration ->
+        val name = firClassLike.classId.relativeClassName.shortName().asString()
+        val prefix = when (firClassLike) {
+            is FirTypeAlias -> "typealias"
+            is FirRegularClass -> {
+                when {
+                    firClassLike.isCompanion -> "companion object"
+                    firClassLike.isInterface -> "interface"
+                    firClassLike.isEnumClass -> "enum class"
+                    firClassLike.isFromEnumClass -> "enum entry"
+                    firClassLike.isLocalClassOrAnonymousObject() -> "object"
+                    else -> "class"
+                }
+            }
+            else -> AssertionError("Unexpected class: $firClassLike")
+        }
+        "$prefix '$name'"
     }
 
     val RENDER_TYPE = Renderer { t: ConeKotlinType ->
