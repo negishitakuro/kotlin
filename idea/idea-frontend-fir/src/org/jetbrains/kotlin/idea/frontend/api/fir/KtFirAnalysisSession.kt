@@ -7,11 +7,13 @@ package org.jetbrains.kotlin.idea.frontend.api.fir
 
 import com.intellij.openapi.project.Project
 import com.intellij.psi.search.GlobalSearchScope
+import org.jetbrains.kotlin.analyzer.ModuleInfo
 import org.jetbrains.kotlin.fir.FirSession
 import org.jetbrains.kotlin.fir.moduleData
 import org.jetbrains.kotlin.fir.resolve.providers.FirSymbolProvider
 import org.jetbrains.kotlin.fir.resolve.symbolProvider
 import org.jetbrains.kotlin.idea.fir.low.level.api.api.*
+import org.jetbrains.kotlin.idea.fir.low.level.api.sessions.moduleSourceInfo
 import org.jetbrains.kotlin.idea.frontend.api.InvalidWayOfUsingAnalysisSession
 import org.jetbrains.kotlin.idea.frontend.api.KtAnalysisSession
 import org.jetbrains.kotlin.idea.frontend.api.components.*
@@ -107,6 +109,7 @@ private constructor(
     }
 
     val rootModuleSession: FirSession get() = firResolveState.rootModuleSession
+    val rootModuleInfo: ModuleInfo get() = firResolveState.rootModuleSession.moduleData.moduleSourceInfo
     val firSymbolProvider: FirSymbolProvider get() = rootModuleSession.symbolProvider
     val targetPlatform: TargetPlatform get() = rootModuleSession.moduleData.platform
     val searchScope: GlobalSearchScope = element.resolveScope//todo

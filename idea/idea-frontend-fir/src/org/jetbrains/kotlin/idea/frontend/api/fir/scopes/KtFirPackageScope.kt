@@ -8,6 +8,7 @@ package org.jetbrains.kotlin.idea.frontend.api.fir.scopes
 import com.intellij.openapi.project.Project
 import com.intellij.psi.JavaPsiFacade
 import com.intellij.psi.search.GlobalSearchScope
+import org.jetbrains.kotlin.analyzer.ModuleInfo
 import org.jetbrains.kotlin.fir.scopes.impl.FirPackageMemberScope
 import org.jetbrains.kotlin.idea.fir.low.level.api.createDeclarationProvider
 import org.jetbrains.kotlin.idea.fir.low.level.api.createPackageProvider

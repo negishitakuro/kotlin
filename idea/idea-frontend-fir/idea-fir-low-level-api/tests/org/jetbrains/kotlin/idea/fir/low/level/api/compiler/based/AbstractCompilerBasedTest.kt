@@ -7,31 +7,27 @@ package org.jetbrains.kotlin.idea.fir.low.level.api.compiler.based
 
 import com.intellij.mock.MockProject
 import com.intellij.openapi.Disposable
+import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.psi.PsiElementFinder
 import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.psi.search.ProjectScope
-import org.jetbrains.annotations.NotNull
 import org.jetbrains.kotlin.analyzer.ModuleInfo
 import org.jetbrains.kotlin.analyzer.ModuleSourceInfoBase
 import org.jetbrains.kotlin.asJava.finder.JavaElementFinder
-import org.jetbrains.kotlin.cli.jvm.compiler.JvmPackagePartProvider
 import org.jetbrains.kotlin.cli.jvm.compiler.TopDownAnalyzerFacadeForJVM
 import org.jetbrains.kotlin.cli.jvm.config.jvmClasspathRoots
 import org.jetbrains.kotlin.cli.jvm.config.jvmModularRoots
-import org.jetbrains.kotlin.config.CompilerConfiguration
 import org.jetbrains.kotlin.config.JVMConfigurationKeys
 import org.jetbrains.kotlin.config.LanguageVersionSettings
 import org.jetbrains.kotlin.fir.DependencyListForCliModule
 import org.jetbrains.kotlin.fir.FirSession
-import org.jetbrains.kotlin.fir.analysis.FirAnalyzerFacade
 import org.jetbrains.kotlin.fir.declarations.SealedClassInheritorsProvider
 import org.jetbrains.kotlin.fir.deserialization.ModuleDataProvider
 import org.jetbrains.kotlin.fir.java.FirJavaElementFinder
 import org.jetbrains.kotlin.fir.session.FirModuleInfoBasedModuleData
 import org.jetbrains.kotlin.idea.fir.low.level.api.*
 import org.jetbrains.kotlin.idea.fir.low.level.api.api.*
-import org.jetbrains.kotlin.idea.fir.low.level.api.sessions.FirIdeSession
 import org.jetbrains.kotlin.idea.fir.low.level.api.test.base.DeclarationProviderTestImpl
 import org.jetbrains.kotlin.idea.fir.low.level.api.test.base.KotlinOutOfBlockModificationTrackerFactoryTestImpl
 import org.jetbrains.kotlin.idea.fir.low.level.api.test.base.KtPackageProviderTestImpl
@@ -44,7 +40,6 @@ import org.jetbrains.kotlin.platform.jvm.JvmPlatforms
 import org.jetbrains.kotlin.psi.KtElement
 import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.resolve.PlatformDependentAnalyzerServices
-import org.jetbrains.kotlin.resolve.lazy.declarations.DeclarationProviderFactory
 import org.jetbrains.kotlin.test.TestConfiguration
 import org.jetbrains.kotlin.test.builders.TestConfigurationBuilder
 import org.jetbrains.kotlin.test.builders.testConfiguration
@@ -57,9 +52,6 @@ import org.jetbrains.kotlin.test.services.*
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.TestInfo
-import java.nio.file.Path
-import java.nio.file.Paths
-import kotlin.io.path.nameWithoutExtension
 
 abstract class AbstractCompilerBasedTest : AbstractKotlinCompilerTest() {
     private var _disposable: Disposable? = null
@@ -86,6 +78,8 @@ abstract class AbstractCompilerBasedTest : AbstractKotlinCompilerTest() {
         configureTest()
         defaultConfiguration(this)
         unregisterAllFacades()
+        useAdditionalService(::TestModuleInfoProvider)
+        useModuleStructurePreprocessors({ services -> ModuleRegistrerPreprocessor(services, disposable) })
         useFrontendFacades(::LowLevelFirFrontendFacade)
     }
 
@@ -95,29 +89,19 @@ abstract class AbstractCompilerBasedTest : AbstractKotlinCompilerTest() {
     inner class LowLevelFirFrontendFacade(
         testServices: TestServices
     ) : FrontendFacade<FirOutputArtifact>(testServices, FrontendKinds.FIR) {
-        override val additionalServices: List<ServiceRegistrationData>
-            get() = listOf(service(::FirModuleInfoProvider))
 
         override val additionalDirectives: List<DirectivesContainer>
             get() = listOf(FirDiagnosticsDirectives)
 
         override fun analyze(module: TestModule): FirOutputArtifact {
+            val moduleInfoProvider = testServices.moduleInfoProvider
+            val moduleInfo = moduleInfoProvider.getModuleInfo(module.name)
+
             val project = testServices.compilerConfigurationProvider.getProject(module)
-            val ktFiles = testServices.sourceFileProvider.getKtFilesForSourceFiles(module.files, project)
             PsiElementFinder.EP.getPoint(project).unregisterExtension(JavaElementFinder::class.java)
-
-            val moduleInfo = TestModuleInfo(module)
-            testServices.firModuleInfoProvider.registerModuleData(module, FirModuleInfoBasedModuleData(moduleInfo))
-            val configurator =
-                FirModuleResolveStateConfiguratorForSingleModuleTestImpl(testServices, module, ktFiles, moduleInfo, disposable)
-
-            with(project as MockProject) {
-                registerTestServices(configurator, ktFiles)
-            }
-
             val resolveState = createResolveStateForNoCaching(moduleInfo, project)
 
-            val allFirFiles = ktFiles.map { (testFile, psiFile) ->
+            val allFirFiles = moduleInfo.testFilesToKtFiles.map { (testFile, psiFile) ->
                 testFile to psiFile.getOrBuildFirFile(resolveState)
             }.toMap()
 
@@ -147,12 +131,7 @@ abstract class AbstractCompilerBasedTest : AbstractKotlinCompilerTest() {
     private fun ignoreTest(filePath: String, configuration: TestConfiguration): Boolean {
         val modules = configuration.moduleStructureExtractor.splitTestDataByModules(filePath, configuration.directives)
 
-        if (modules.modules.size > 1) {
-            return true // multimodule tests are not supported
-        }
-
-        val singleModule = modules.modules.single()
-        if (singleModule.files.none { it.isKtFile }) {
+        if (modules.modules.none { it.files.any { it.isKtFile } }) {
             return true // nothing to highlight
         }
 
@@ -160,14 +139,77 @@ abstract class AbstractCompilerBasedTest : AbstractKotlinCompilerTest() {
     }
 }
 
-class TestModuleInfo(
-    val testModule: TestModule,
-) : ModuleInfo, ModuleSourceInfoBase {
-    override val name: Name get() = Name.identifier(testModule.name)
 
-    override fun dependencies(): List<ModuleInfo> {
-        return emptyList()
+class TestModuleInfoProvider(private val testServices: TestServices) : TestService {
+    private val cache = mutableMapOf<String, TestModuleSourceInfo>()
+
+    fun registerModuleInfo(testModule: TestModule, ktFiles: Map<TestFile, KtFile>) {
+        cache[testModule.name] = TestModuleSourceInfo(testModule, ktFiles, testServices)
     }
+
+    fun getModuleInfoByKtFile(ktFile: KtFile): TestModuleSourceInfo =
+        cache.values.first { moduleSourceInfo ->
+            ktFile in moduleSourceInfo.ktFiles
+        }
+
+    fun getModuleInfo(moduleName: String): TestModuleSourceInfo =
+        cache.getValue(moduleName)
+}
+
+val TestServices.moduleInfoProvider: TestModuleInfoProvider by TestServices.testServiceAccessor()
+
+class ModuleRegistrerPreprocessor(testServices: TestServices, private val parentDisposable: Disposable) :
+    ModuleStructurePreprocessor(testServices) {
+
+    private val moduleInfoProvider = testServices.moduleInfoProvider
+
+    override fun preprocessModuleStructure(moduleStructure: TestModuleStructure) {
+        // todo rework after all modules will have the same Project instance
+        val ktFilesByModule = moduleStructure.modules.associateWith { testModule ->
+            val project = testServices.compilerConfigurationProvider.getProject(testModule)
+            testServices.sourceFileProvider.getKtFilesForSourceFiles(testModule.files, project)
+        }
+
+        val allKtFiles = ktFilesByModule.values.flatMap { it.values.toList() }
+
+        ktFilesByModule.forEach { (testModule, ktFiles) ->
+            val project = testServices.compilerConfigurationProvider.getProject(testModule)
+            moduleInfoProvider.registerModuleInfo(testModule, ktFiles)
+
+            val configurator = FirModuleResolveStateConfiguratorForSingleModuleTestImpl(
+                project,
+                testServices,
+                parentDisposable
+            )
+            (project as MockProject).registerTestServices(configurator, allKtFiles)
+        }
+    }
+}
+
+class TestModuleSourceInfo(
+    val testModule: TestModule,
+    val testFilesToKtFiles: Map<TestFile, KtFile>,
+    testServices: TestServices,
+) : ModuleInfo, ModuleSourceInfoBase {
+    private val moduleInfoProvider = testServices.moduleInfoProvider
+
+    val ktFiles = testFilesToKtFiles.values.toSet()
+    val moduleData = FirModuleInfoBasedModuleData(this)
+
+    override val name: Name
+        get() = Name.identifier(testModule.name)
+
+    override fun dependencies(): List<ModuleInfo> =
+        testModule.regularDependencies
+            .map { moduleInfoProvider.getModuleInfo(it.moduleName) }
+
+    override val expectedBy: List<ModuleInfo>
+        get() = testModule.dependsOnDependencies
+            .map { moduleInfoProvider.getModuleInfo(it.moduleName) }
+
+    override fun modulesWhoseInternalsAreVisible(): Collection<ModuleInfo> =
+        testModule.friendDependencies
+            .map { moduleInfoProvider.getModuleInfo(it.moduleName) }
 
     override val platform: TargetPlatform
         get() = testModule.targetPlatform
@@ -178,32 +220,25 @@ class TestModuleInfo(
 
 
 class FirModuleResolveStateConfiguratorForSingleModuleTestImpl(
-    private val testServices: TestServices,
-    private val testModule: TestModule,
-    private val ktFiles: Map<TestFile, KtFile>,
-    private val moduleInfo: ModuleInfo,
+    private val project: Project,
+    testServices: TestServices,
     private val parentDisposable: Disposable,
 ) : FirModuleResolveStateConfigurator() {
-    val moduleInfoProvider = testServices.firModuleInfoProvider
-    val compilerConfigurationProvider = testServices.compilerConfigurationProvider
-
-    val project = compilerConfigurationProvider.getProject(testModule)
-
-    val languageVersionSettings = testModule.languageVersionSettings
-    val packagePartProviderFactory = compilerConfigurationProvider.getPackagePartProviderFactory(testModule)
-
-    val configuration = compilerConfigurationProvider.getCompilerConfiguration(testModule)
-
-    val librariesScope = ProjectScope.getLibrariesScope(project)
-    val sourcesScope = TopDownAnalyzerFacadeForJVM.newModuleSearchScope(project, ktFiles.values)
-
+    private val moduleInfoProvider = testServices.moduleInfoProvider
+    private val compilerConfigurationProvider = testServices.compilerConfigurationProvider
+    private val librariesScope = ProjectScope.getLibrariesScope(project)//todo incorrect?
     private val sealedClassInheritorsProvider = SealedClassInheritorsProviderTestImpl()
 
-    override fun createPackagePartsProvider(scope: GlobalSearchScope): PackagePartProvider {
-        return packagePartProviderFactory.invoke(scope)
+    override fun createPackagePartsProvider(moduleInfo: ModuleSourceInfoBase, scope: GlobalSearchScope): PackagePartProvider {
+        require(moduleInfo is TestModuleSourceInfo)
+        val factory = compilerConfigurationProvider.getPackagePartProviderFactory(moduleInfo.testModule)
+        return factory(scope)
     }
 
+
     override fun createModuleDataProvider(moduleInfo: ModuleSourceInfoBase): ModuleDataProvider {
+        require(moduleInfo is TestModuleSourceInfo)
+        val configuration = compilerConfigurationProvider.getCompilerConfiguration(moduleInfo.testModule)
         return DependencyListForCliModule.build(
             moduleInfo.name,
             moduleInfo.platform,
@@ -214,18 +249,20 @@ class FirModuleResolveStateConfiguratorForSingleModuleTestImpl(
 
             friendDependencies(configuration[JVMConfigurationKeys.FRIEND_PATHS] ?: emptyList())
 
-            sourceDependencies(moduleInfoProvider.getRegularDependentSourceModules(testModule))
-            sourceFriendsDependencies(moduleInfoProvider.getDependentFriendSourceModules(testModule))
-            sourceDependsOnDependencies(moduleInfoProvider.getDependentDependsOnSourceModules(testModule))
+            sourceDependencies(moduleInfo.moduleData.dependencies)
+            sourceFriendsDependencies(moduleInfo.moduleData.friendDependencies)
+            sourceDependsOnDependencies(moduleInfo.moduleData.dependsOnDependencies)
         }.moduleDataProvider
     }
 
     override fun getLanguageVersionSettings(moduleInfo: ModuleSourceInfoBase): LanguageVersionSettings {
-        return languageVersionSettings
+        require(moduleInfo is TestModuleSourceInfo)
+        return moduleInfo.testModule.languageVersionSettings
     }
 
     override fun getModuleSourceScope(moduleInfo: ModuleSourceInfoBase): GlobalSearchScope {
-        return sourcesScope
+        require(moduleInfo is TestModuleSourceInfo)
+        return TopDownAnalyzerFacadeForJVM.newModuleSearchScope(project, moduleInfo.testFilesToKtFiles.values)
     }
 
     override fun createScopeForModuleLibraries(moduleInfo: ModuleSourceInfoBase): GlobalSearchScope {
@@ -237,7 +274,8 @@ class FirModuleResolveStateConfiguratorForSingleModuleTestImpl(
     }
 
     override fun getModuleInfoFor(element: KtElement): ModuleInfo {
-        return moduleInfo
+        val containingFile = element.containingKtFile
+        return moduleInfoProvider.getModuleInfoByKtFile(containingFile)
     }
 
     override fun configureSourceSession(session: FirSession) {
@@ -247,7 +285,7 @@ class FirModuleResolveStateConfiguratorForSingleModuleTestImpl(
 
 fun MockProject.registerTestServices(
     configurator: FirModuleResolveStateConfiguratorForSingleModuleTestImpl,
-    ktFiles: Map<TestFile, KtFile>
+    allKtFiles: List<KtFile>,
 ) {
     registerService(
         FirModuleResolveStateConfigurator::class.java,
@@ -260,12 +298,12 @@ fun MockProject.registerTestServices(
     )
     registerService(KtDeclarationProviderFactory::class.java, object : KtDeclarationProviderFactory() {
         override fun createDeclarationProvider(searchScope: GlobalSearchScope): DeclarationProvider {
-            return DeclarationProviderTestImpl(searchScope, ktFiles.values)
+            return DeclarationProviderTestImpl(searchScope, allKtFiles.filter { searchScope.contains(it.virtualFile) })
         }
     })
     registerService(KtPackageProviderFactory::class.java, object : KtPackageProviderFactory() {
         override fun createPackageProvider(searchScope: GlobalSearchScope): KtPackageProvider {
-            return KtPackageProviderTestImpl(searchScope, ktFiles.values)
+            return KtPackageProviderTestImpl(searchScope, allKtFiles.filter { searchScope.contains(it.virtualFile) })
         }
     })
 }

@@ -6,19 +6,14 @@
 package org.jetbrains.kotlin.idea.fir.low.level.api.test.base
 
 import com.intellij.mock.MockProject
-import com.intellij.openapi.Disposable
-import com.intellij.openapi.util.Disposer
 import com.intellij.psi.PsiElementFinder
 import org.jetbrains.kotlin.asJava.finder.JavaElementFinder
 import org.jetbrains.kotlin.fir.session.FirModuleInfoBasedModuleData
-import org.jetbrains.kotlin.idea.fir.low.level.api.compiler.based.FirModuleResolveStateConfiguratorForSingleModuleTestImpl
-import org.jetbrains.kotlin.idea.fir.low.level.api.compiler.based.TestModuleInfo
-import org.jetbrains.kotlin.idea.fir.low.level.api.compiler.based.registerTestServices
+import org.jetbrains.kotlin.idea.fir.low.level.api.compiler.based.*
 import org.jetbrains.kotlin.platform.jvm.JvmPlatforms
 import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.test.builders.TestConfigurationBuilder
 import org.jetbrains.kotlin.test.builders.testConfiguration
-import org.jetbrains.kotlin.test.frontend.fir.FirModuleInfoProvider
 import org.jetbrains.kotlin.test.frontend.fir.firModuleInfoProvider
 import org.jetbrains.kotlin.test.model.DependencyKind
 import org.jetbrains.kotlin.test.model.FrontendKinds
@@ -32,7 +27,7 @@ import java.nio.file.Path
 import java.nio.file.Paths
 import kotlin.io.path.nameWithoutExtension
 
-abstract class AbstractLowLevelApiTest: TestWithDisposable() {
+abstract class AbstractLowLevelApiTest : TestWithDisposable() {
     private lateinit var testInfo: KotlinTestInfo
 
     private val configure: TestConfigurationBuilder.() -> Unit = {
@@ -50,8 +45,8 @@ abstract class AbstractLowLevelApiTest: TestWithDisposable() {
 
         useSourcePreprocessor(::ExpressionMarkersSourceFilePreprocessor)
         useAdditionalService(::ExpressionMarkerProvider)
-        useAdditionalService(::FirModuleInfoProvider)
-
+        useAdditionalService(::TestModuleInfoProvider)
+        useModuleStructurePreprocessors({ services -> ModuleRegistrerPreprocessor(services, disposable) })
         configureTest(this)
 
         this.testInfo = this@AbstractLowLevelApiTest.testInfo
@@ -74,32 +69,27 @@ abstract class AbstractLowLevelApiTest: TestWithDisposable() {
         val moduleStructure = testConfiguration.moduleStructureExtractor.splitTestDataByModules(
             path,
             testConfiguration.directives,
-        ).also {
-            testConfiguration.testServices.register(TestModuleStructure::class, it)
+        ).also { testModuleStructure ->
+            testConfiguration.testServices.register(TestModuleStructure::class, testModuleStructure)
+            testConfiguration.moduleStructurePreprocessors.forEach { preprocessor ->
+                preprocessor.preprocessModuleStructure(testModuleStructure)
+            }
         }
+
 
         val singleModule = moduleStructure.modules.single()
         val project = testServices.compilerConfigurationProvider.getProject(singleModule)
-        val ktFiles = testServices.sourceFileProvider.getKtFilesForSourceFiles(singleModule.files, project)
+        val moduleInfoProvider = testServices.moduleInfoProvider
 
         PsiElementFinder.EP.getPoint(project).unregisterExtension(JavaElementFinder::class.java)
 
-        val moduleInfo = TestModuleInfo(singleModule)
-        testServices.firModuleInfoProvider.registerModuleData(singleModule, FirModuleInfoBasedModuleData(moduleInfo))
-        val configurator = FirModuleResolveStateConfiguratorForSingleModuleTestImpl(
-            testServices,
-            singleModule,
-            ktFiles,
-            moduleInfo,
-            disposable
-        )
+        val moduleInfo = moduleInfoProvider.getModuleInfo(singleModule.name)
 
         with(project as MockProject) {
-            registerTestServices(configurator, ktFiles)
             registerServicesForProject(this)
         }
 
-        doTestByFileStructure(ktFiles.values.toList(), moduleStructure, testServices)
+        doTestByFileStructure(moduleInfo.ktFiles.toList(), moduleStructure, testServices)
     }
 
     protected open fun registerServicesForProject(project: MockProject) {}

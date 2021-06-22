@@ -28,6 +28,7 @@ class TestConfigurationBuilder {
     private val sourcePreprocessors: MutableList<Constructor<SourceFilePreprocessor>> = mutableListOf()
     private val additionalMetaInfoProcessors: MutableList<Constructor<AdditionalMetaInfoProcessor>> = mutableListOf()
     private val environmentConfigurators: MutableList<Constructor<EnvironmentConfigurator>> = mutableListOf()
+    private val moduleStructurePreprocessors: MutableList<Constructor<ModuleStructurePreprocessor>> = mutableListOf()
 
     private val additionalSourceProviders: MutableList<Constructor<AdditionalSourceProvider>> = mutableListOf()
     private val moduleStructureTransformers: MutableList<ModuleStructureTransformer> = mutableListOf()
@@ -131,6 +132,10 @@ class TestConfigurationBuilder {
         this.environmentConfigurators += environmentConfigurators
     }
 
+    fun useModuleStructurePreprocessors(vararg preprocessors: Constructor<ModuleStructurePreprocessor>) {
+        this.moduleStructurePreprocessors += preprocessors
+    }
+
     fun useMetaInfoProcessors(vararg updaters: Constructor<AdditionalMetaInfoProcessor>) {
         additionalMetaInfoProcessors += updaters
     }
@@ -189,6 +194,7 @@ class TestConfigurationBuilder {
             additionalMetaInfoProcessors,
             environmentConfigurators,
             additionalSourceProviders,
+            moduleStructurePreprocessors,
             moduleStructureTransformers,
             metaTestConfigurators,
             afterAnalysisCheckers,
