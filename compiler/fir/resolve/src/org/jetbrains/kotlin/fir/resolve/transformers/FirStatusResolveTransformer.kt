@@ -428,8 +428,9 @@ abstract class AbstractFirStatusResolveTransformer(
             val outerClasses = generateSequence(symbol.classId) { classId ->
                 classId.outerClassId
             }.mapTo(mutableListOf()) { firProvider.getFirClassifierByFqName(it) }
-            val file = firProvider.getFirClassifierContainerFileIfAny(regularClass.symbol)
-            requireNotNull(file) { "Containing file was not found for\n${regularClass.render()}" }
+
+            requireClassHasContainerFile(regularClass)
+
             this += outerClasses.filterNotNull().asReversed()
         }
 
@@ -446,6 +447,13 @@ abstract class AbstractFirStatusResolveTransformer(
         )
         designation.first().transformSingle(transformer, null)
         statusComputationSession.endComputing(regularClass)
+    }
+
+    private fun requireClassHasContainerFile(regularClass: FirRegularClass) {
+        val firProviderForClassModule = regularClass.moduleData.session.firProvider
+        val file = firProviderForClassModule.getFirClassifierContainerFileIfAny(regularClass.symbol)
+
+        requireNotNull(file) { "Containing file was not found for\n${regularClass.render()}" }
     }
 
     private fun transformPropertyAccessor(
