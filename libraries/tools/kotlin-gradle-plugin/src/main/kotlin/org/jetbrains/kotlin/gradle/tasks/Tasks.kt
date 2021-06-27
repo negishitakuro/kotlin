@@ -170,7 +170,8 @@ abstract class GradleCompileTaskProvider @Inject constructor(
     )
 }
 
-abstract class AbstractKotlinCompile<T : CommonCompilerArguments> : AbstractKotlinCompileTool<T>() {
+abstract class AbstractKotlinCompile<T : CommonCompilerArguments> : AbstractKotlinCompileTool<T>(),
+    CompileUsingKotlinDaemonWithNormalization {
 
     open class Configurator<T : AbstractKotlinCompile<*>>(protected val compilation: KotlinCompilationData<*>) : TaskConfigurator<T> {
         override fun configure(task: T) {
@@ -200,6 +201,8 @@ abstract class AbstractKotlinCompile<T : CommonCompilerArguments> : AbstractKotl
                 project.layout.buildDirectory.dir("$KOTLIN_BUILD_DIR_NAME/${task.name}")
             ).disallowChanges()
             task.localStateDirectories.from(task.taskBuildDirectory).disallowChanges()
+
+            PropertiesProvider(task.project).mapKotlinDaemonProperties(task)
         }
     }
 
@@ -298,6 +301,8 @@ abstract class AbstractKotlinCompile<T : CommonCompilerArguments> : AbstractKotl
 
     private val kotlinLogger by lazy { GradleKotlinLogger(logger) }
 
+    abstract override val kotlinDaemonJvmArguments: ListProperty<String>
+
     @get:Internal
     protected val gradleCompileTaskProvider: Provider<GradleCompileTaskProvider> = objects
         .property(
@@ -308,7 +313,7 @@ abstract class AbstractKotlinCompile<T : CommonCompilerArguments> : AbstractKotl
     internal open val compilerRunner: Provider<GradleCompilerRunner> =
         objects.propertyWithConvention(
             gradleCompileTaskProvider.map {
-                GradleCompilerRunner(it, null)
+                GradleCompilerRunner(it, null, normalizedKotlinDaemonJvmArguments.orNull)
             }
         )
 
@@ -499,7 +504,8 @@ abstract class KotlinCompile @Inject constructor(
             objects.property(gradleCompileTaskProvider.map {
                 GradleCompilerRunner(
                     it,
-                    toolchain.currentJvmJdkToolsJar.orNull
+                    toolchain.currentJvmJdkToolsJar.orNull,
+                    normalizedKotlinDaemonJvmArguments.orNull
                 )
             })
         }
@@ -647,6 +653,7 @@ internal abstract class KotlinCompileWithWorkers @Inject constructor(
                 GradleCompilerRunnerWithWorkers(
                     it,
                     null,
+                    normalizedKotlinDaemonJvmArguments.orNull,
                     workerExecutor
                 ) as GradleCompilerRunner
             }
@@ -665,6 +672,7 @@ internal abstract class Kotlin2JsCompileWithWorkers @Inject constructor(
                 GradleCompilerRunnerWithWorkers(
                     it,
                     null,
+                    normalizedKotlinDaemonJvmArguments.orNull,
                     workerExecutor
                 ) as GradleCompilerRunner
             }
@@ -682,6 +690,7 @@ internal abstract class KotlinCompileCommonWithWorkers @Inject constructor(
                 GradleCompilerRunnerWithWorkers(
                     it,
                     null,
+                    normalizedKotlinDaemonJvmArguments.orNull,
                     workerExecutor
                 ) as GradleCompilerRunner
             }

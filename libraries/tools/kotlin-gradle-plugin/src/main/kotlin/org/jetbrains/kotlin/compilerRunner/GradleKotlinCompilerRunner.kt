@@ -15,6 +15,8 @@ import org.jetbrains.kotlin.cli.common.arguments.*
 import org.jetbrains.kotlin.cli.common.messages.MessageCollector
 import org.jetbrains.kotlin.daemon.client.CompileServiceSession
 import org.jetbrains.kotlin.daemon.common.CompilerId
+import org.jetbrains.kotlin.daemon.common.configureDaemonJVMOptions
+import org.jetbrains.kotlin.daemon.common.filterExtractProps
 import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
 import org.jetbrains.kotlin.gradle.dsl.multiplatformExtensionOrNull
 import org.jetbrains.kotlin.gradle.logging.kotlinDebug
@@ -58,7 +60,8 @@ is not assignable to 'org.gradle.api.tasks.TaskProvider'" exception
  */
 internal open class GradleCompilerRunner(
     protected val taskProvider: GradleCompileTaskProvider,
-    protected val jdkToolsJar: File?
+    protected val jdkToolsJar: File?,
+    protected val kotlinDaemonJvmArgs: List<String>?
 ) {
 
     internal val pathProvider = taskProvider.path.get()
@@ -184,7 +187,8 @@ internal open class GradleCompilerRunner(
             taskPath = pathProvider,
             reportingSettings = environment.reportingSettings,
             kotlinScriptExtensions = environment.kotlinScriptExtensions,
-            allWarningsAsErrors = compilerArgs.allWarningsAsErrors
+            allWarningsAsErrors = compilerArgs.allWarningsAsErrors,
+            daemonJvmArgs = kotlinDaemonJvmArgs
         )
         TaskLoggers.put(pathProvider, loggerProvider)
         runCompilerAsync(workArgs)
@@ -202,15 +206,35 @@ internal open class GradleCompilerRunner(
             sessionIsAliveFlagFile: File,
             compilerFullClasspath: List<File>,
             messageCollector: MessageCollector,
+            daemonJvmArgs: List<String>?,
             isDebugEnabled: Boolean
         ): CompileServiceSession? {
             val compilerId = CompilerId.makeCompilerId(compilerFullClasspath)
-            val additionalJvmParams = arrayListOf<String>()
+            val daemonJvmOptions = if (daemonJvmArgs.isNullOrEmpty()) {
+                configureDaemonJVMOptions(
+                    inheritMemoryLimits = true,
+                    inheritOtherJvmOptions = false,
+                    inheritAdditionalProperties = true
+                )
+            } else {
+                configureDaemonJVMOptions(
+                    inheritMemoryLimits = false,
+                    inheritOtherJvmOptions = false,
+                    inheritAdditionalProperties = true
+                ).also { opts ->
+                    opts.jvmParams.addAll(
+                        daemonJvmArgs.filterExtractProps(opts.mappers, prefix = "")
+                    )
+                    // Setting max memory here, so running Kotlin Daemon could adjust own jvm max heap size accordingly
+                    opts.maxMemory = daemonJvmArgs.find { it.startsWith("Xmx") }?.removePrefix("Xmx") ?: ""
+                }
+            }
+
             return KotlinCompilerRunnerUtils.newDaemonConnection(
                 compilerId, clientIsAliveFlagFile, sessionIsAliveFlagFile,
                 messageCollector = messageCollector,
                 isDebugEnabled = isDebugEnabled,
-                additionalJvmParams = additionalJvmParams.toTypedArray()
+                daemonJVMOptions = daemonJvmOptions
             )
         }
 
