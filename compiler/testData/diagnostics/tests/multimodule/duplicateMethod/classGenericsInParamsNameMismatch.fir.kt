@@ -5,7 +5,7 @@
 package p
 
 public interface B<T> {
-    public fun foo(): T
+    public fun foo(a: T)
 }
 
 // MODULE: m2(m1)
@@ -13,7 +13,7 @@ public interface B<T> {
 package p
 
 public interface C<X> : B<X> {
-    override fun foo(): X
+    override fun foo(a: X)
 
 }
 
@@ -21,16 +21,16 @@ public interface C<X> : B<X> {
 // FILE: b.kt
 package p
 
-public interface B<T> {
-    public fun foo(): T
+public interface B<T1> {
+    public fun foo(a: T1)
 }
 
 // MODULE: m4(m3, m2)
 // FILE: c.kt
 import p.*
 
-fun test(b: B<String>?) {
-    if (b is C) {
-        b?.foo()
+fun <Y> test(b: B<Y>?, y: Y) {
+    if (b is <!NO_TYPE_ARGUMENTS_ON_RHS!>C<!>) {
+        b?.foo(y)
     }
 }

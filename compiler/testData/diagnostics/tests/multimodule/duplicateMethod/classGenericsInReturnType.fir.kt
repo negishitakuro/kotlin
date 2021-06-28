@@ -30,7 +30,7 @@ public interface B<T> {
 import p.*
 
 fun test(b: B<String>?) {
-    if (b is C) {
+    if (b is <!NO_TYPE_ARGUMENTS_ON_RHS!>C<!>) {
         b?.foo()
     }
 }

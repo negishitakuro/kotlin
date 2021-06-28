@@ -5,7 +5,7 @@
 package p
 
 public interface B<T> {
-    public fun foo(): T
+    public fun foo(a: T)
 }
 
 // MODULE: m2(m1)
@@ -13,7 +13,7 @@ public interface B<T> {
 package p
 
 public interface C<X> : B<X> {
-    override fun foo(): X
+    override fun foo(a: X)
 
 }
 
@@ -22,7 +22,7 @@ public interface C<X> : B<X> {
 package p
 
 public interface B<T> {
-    public fun foo(): T
+    public fun foo(a: T)
 }
 
 // MODULE: m4(m3, m2)
@@ -30,7 +30,7 @@ public interface B<T> {
 import p.*
 
 fun test(b: B<String>?) {
-    if (b is C) {
-        b?.foo()
+    if (b is <!NO_TYPE_ARGUMENTS_ON_RHS!>C<!>) {
+        b?.foo("")
     }
 }
