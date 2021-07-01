@@ -1,3 +1,4 @@
+// !LANGUAGE: -ProperTypeInferenceConstraintsProcessing
 // IGNORE_BACKEND_FIR: JVM_IR
 
 sealed class Subtype<A1, B1> {
