@@ -21,12 +21,10 @@ import org.jetbrains.kotlin.descriptors.ModuleDescriptor
 import org.jetbrains.kotlin.descriptors.PropertyDescriptor
 import org.jetbrains.kotlin.idea.MainFunctionDetector
 import org.jetbrains.kotlin.ir.declarations.*
-import org.jetbrains.kotlin.ir.util.fqNameWhenAvailable
 import org.jetbrains.kotlin.ir.util.isFacadeClass
 import org.jetbrains.kotlin.ir.util.isFromJava
 import org.jetbrains.kotlin.load.java.descriptors.JavaMethodDescriptor
 import org.jetbrains.kotlin.load.java.lazy.descriptors.isJavaField
-import org.jetbrains.kotlin.resolve.jvm.diagnostics.JvmDeclarationOrigin
 
 abstract class AbstractJvmManglerIr : IrBasedKotlinManglerImpl() {
 
@@ -35,11 +33,6 @@ abstract class AbstractJvmManglerIr : IrBasedKotlinManglerImpl() {
             // We need to handle references to file-level declarations from classes declared in those files.
             // Thus we give them all public signatures
             return parent.isFacadeClass
-        }
-
-        override fun visitField(declaration: IrField, data: Nothing?): Boolean {
-            if (declaration.origin == IrDeclarationOrigin.IR_EXTERNAL_JAVA_DECLARATION_STUB) return true
-            return super.visitField(declaration, data)
         }
     }
 
