@@ -25,6 +25,7 @@ import org.jetbrains.kotlin.gradle.targets.metadata.isCompatibilityMetadataVaria
 import org.jetbrains.kotlin.gradle.targets.metadata.isKotlinGranularMetadataEnabled
 import org.jetbrains.kotlin.gradle.tasks.locateTask
 import org.jetbrains.kotlin.gradle.tasks.registerTask
+import org.jetbrains.kotlin.gradle.utils.getValue
 import org.jetbrains.kotlin.library.KotlinAbiVersion
 import org.jetbrains.kotlin.tooling.KotlinToolingMetadata
 import org.jetbrains.kotlin.tooling.toJsonString
@@ -59,19 +60,21 @@ open class BuildKotlinToolingMetadataTask : DefaultTask() {
     val outputFile: Property<File> = project.objects.property(File::class.java)
         .convention(project.buildDir.resolve("kotlinToolingMetadata").resolve("kotlin-tooling-metadata.json"))
 
-    @Internal
-    fun getKotlinToolingMetadata(): KotlinToolingMetadata {
-        return project.kotlinExtension.getKotlinToolingMetadata()
+    @get:Internal
+    internal val kotlinToolingMetadata by project.provider {
+        project.kotlinExtension.getKotlinToolingMetadata()
     }
 
-    @Input
-    internal fun getKotlinToolingMetadataJson(): String = getKotlinToolingMetadata().toJsonString()
+    @get:Input
+    internal val kotlinToolingMetadataJson by project.provider {
+        kotlinToolingMetadata.toJsonString()
+    }
 
     @TaskAction
     internal fun createToolingMetadataFile() {
         val outputFile = outputFile.orNull ?: return
         outputFile.parentFile.mkdirs()
-        outputFile.writeText(getKotlinToolingMetadataJson())
+        outputFile.writeText(kotlinToolingMetadataJson)
     }
 }
 
