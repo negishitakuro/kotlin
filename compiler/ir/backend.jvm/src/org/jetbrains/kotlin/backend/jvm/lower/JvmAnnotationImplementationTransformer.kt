@@ -5,8 +5,10 @@
 
 package org.jetbrains.kotlin.backend.jvm.lower
 
+import org.jetbrains.kotlin.backend.common.BackendContext
 import org.jetbrains.kotlin.backend.common.lower.ANNOTATION_IMPLEMENTATION
 import org.jetbrains.kotlin.backend.common.lower.AnnotationImplementationLowering
+import org.jetbrains.kotlin.backend.common.lower.AnnotationImplementationTransformer
 import org.jetbrains.kotlin.backend.common.lower.createIrBuilder
 import org.jetbrains.kotlin.backend.common.phaser.makeIrFilePhase
 import org.jetbrains.kotlin.backend.jvm.JvmBackendContext
@@ -14,6 +16,7 @@ import org.jetbrains.kotlin.backend.jvm.lower.FunctionReferenceLowering.Companio
 import org.jetbrains.kotlin.ir.builders.*
 import org.jetbrains.kotlin.ir.builders.declarations.addFunction
 import org.jetbrains.kotlin.ir.declarations.IrClass
+import org.jetbrains.kotlin.ir.declarations.IrFile
 import org.jetbrains.kotlin.ir.declarations.IrFunction
 import org.jetbrains.kotlin.ir.expressions.IrExpression
 import org.jetbrains.kotlin.ir.types.IrType
@@ -24,13 +27,14 @@ import org.jetbrains.kotlin.ir.util.defaultType
 import org.jetbrains.kotlin.ir.util.findDeclaration
 import org.jetbrains.kotlin.ir.util.isPrimitiveArray
 
-internal val annotationImplementationPhase = makeIrFilePhase(
-    ::JvmAnnotationImplementationLowering,
+internal val annotationImplementationPhase = makeIrFilePhase<JvmBackendContext>(
+    { ctxt -> AnnotationImplementationLowering { JvmAnnotationImplementationTransformer(ctxt, it) } },
     name = "AnnotationImplementation",
     description = "Create synthetic annotations implementations and use them in annotations constructor calls"
 )
 
-class JvmAnnotationImplementationLowering(val jvmContext: JvmBackendContext): AnnotationImplementationLowering(jvmContext) {
+class JvmAnnotationImplementationTransformer(val jvmContext: JvmBackendContext, file: IrFile) :
+    AnnotationImplementationTransformer(jvmContext, file) {
     override fun IrType.kClassToJClassIfNeeded(): IrType {
         if (!this.isKClass()) return this
         return jvmContext.ir.symbols.javaLangClass.starProjectedType

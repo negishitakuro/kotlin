@@ -11,43 +11,42 @@ import org.jetbrains.kotlin.backend.common.IrElementTransformerVoidWithContext
 import org.jetbrains.kotlin.backend.common.ir.addChild
 import org.jetbrains.kotlin.backend.common.ir.copyTo
 import org.jetbrains.kotlin.backend.common.ir.createImplicitParameterDeclarationWithWrappedDescriptor
-import org.jetbrains.kotlin.descriptors.*
+import org.jetbrains.kotlin.descriptors.DescriptorVisibilities
+import org.jetbrains.kotlin.descriptors.Modality
 import org.jetbrains.kotlin.ir.UNDEFINED_OFFSET
 import org.jetbrains.kotlin.ir.builders.*
 import org.jetbrains.kotlin.ir.builders.declarations.*
 import org.jetbrains.kotlin.ir.declarations.*
 import org.jetbrains.kotlin.ir.expressions.IrConstructorCall
 import org.jetbrains.kotlin.ir.expressions.IrExpression
-import org.jetbrains.kotlin.ir.expressions.IrMemberAccessExpression
 import org.jetbrains.kotlin.ir.expressions.impl.IrConstructorCallImpl
 import org.jetbrains.kotlin.ir.expressions.impl.IrDelegatingConstructorCallImpl
 import org.jetbrains.kotlin.ir.expressions.impl.IrGetValueImpl
 import org.jetbrains.kotlin.ir.expressions.impl.IrSetFieldImpl
-import org.jetbrains.kotlin.ir.symbols.IrSimpleFunctionSymbol
 import org.jetbrains.kotlin.ir.types.IrType
 import org.jetbrains.kotlin.ir.types.classOrNull
-import org.jetbrains.kotlin.ir.types.getClass
 import org.jetbrains.kotlin.ir.types.isKClass
 import org.jetbrains.kotlin.ir.util.*
+import org.jetbrains.kotlin.ir.visitors.transformChildrenVoid
 import org.jetbrains.kotlin.name.Name
 
 val ANNOTATION_IMPLEMENTATION = object : IrDeclarationOriginImpl("ANNOTATION_IMPLEMENTATION", isSynthetic = true) {}
 
-open class AnnotationImplementationLowering(val context: BackendContext) : FileLoweringPass, IrElementTransformerVoidWithContext() {
-    private val implementations: MutableMap<IrClass, IrClass> = mutableMapOf()
+class AnnotationImplementationLowering(
+    val transformer: (IrFile) -> AnnotationImplementationTransformer
+) : FileLoweringPass {
+    override fun lower(irFile: IrFile) {
+        val tf = transformer(irFile)
+        irFile.transformChildrenVoid(tf)
+        tf.implementations.values.forEach { irFile.addChild(it) }
+    }
+}
+
+open class AnnotationImplementationTransformer(val context: BackendContext, val irFile: IrFile) : IrElementTransformerVoidWithContext() {
+    internal val implementations: MutableMap<IrClass, IrClass> = mutableMapOf()
 
     private var startOffset = UNDEFINED_OFFSET
     private var endOffset = UNDEFINED_OFFSET
-
-    private lateinit var curFile: IrFile
-
-    override fun lower(irFile: IrFile) {
-        implementations.clear()
-        curFile = irFile
-        irFile.transformChildrenVoid()
-        // reassign startOffset, endOffset appropriately?
-        implementations.values.forEach { irFile.addChild(it) }
-    }
 
     override fun visitConstructorCall(expression: IrConstructorCall): IrExpression {
         val constructedClass = expression.type.classOrNull?.owner ?: return expression
@@ -68,13 +67,14 @@ open class AnnotationImplementationLowering(val context: BackendContext) : FileL
     }
 
     private fun createAnnotationImplementation(annotationClass: IrClass): IrClass {
-        val wrapperName = Name.identifier(annotationClass.fqNameWhenAvailable!!.asString().replace('.', '_') + "Impl")
+        val parentFqName = annotationClass.fqNameWhenAvailable!!.asString().replace('.', '_')
+        val wrapperName = Name.identifier("annotationImpl\$$parentFqName\$0")
         val subclass = context.irFactory.buildClass {
             name = wrapperName
             origin = ANNOTATION_IMPLEMENTATION
             visibility = DescriptorVisibilities.PRIVATE
         }.apply {
-            parent = curFile
+            parent = currentClass?.scope?.getLocalDeclarationParent() ?: irFile
             createImplicitParameterDeclarationWithWrappedDescriptor()
             superTypes = listOf(annotationClass.defaultType)
         }
@@ -128,7 +128,7 @@ open class AnnotationImplementationLowering(val context: BackendContext) : FileL
                 isVar = false
                 origin = ANNOTATION_IMPLEMENTATION
             }.apply {
-                backingField = field// .also { it.parent = this }
+                backingField = field
                 parent = implClass
             }
 
@@ -181,87 +181,3 @@ open class AnnotationImplementationLowering(val context: BackendContext) : FileL
     open fun implementPlatformSpecificParts(annotationClass: IrClass, implClass: IrClass) {}
 }
 
-class MethodsFromAnyGeneratorForLowerings(val context: BackendContext, val irClass: IrClass, val origin: IrDeclarationOrigin? = null) {
-    fun createToStringMethodDeclaration(): IrSimpleFunction = irClass.addFunction("toString", context.irBuiltIns.stringType).apply {
-        overriddenSymbols = irClass.collectOverridenSymbols { it.isToString() }
-    }
-
-    fun createHashCodeMethodDeclaration(): IrSimpleFunction = irClass.addFunction("hashCode", context.irBuiltIns.intType).apply {
-        overriddenSymbols = irClass.collectOverridenSymbols { it.isHashCode() }
-    }
-
-    fun createEqualsMethodDeclaration(): IrSimpleFunction = irClass.addFunction("equals", context.irBuiltIns.booleanType).apply {
-        overriddenSymbols = irClass.collectOverridenSymbols { it.isEquals(context) }
-        addValueParameter("other", context.irBuiltIns.anyNType)
-    }
-
-    inner class LoweringDataClassMemberGenerator(
-        val nameForToString: String,
-        val selectEquals: IrBlockBodyBuilder.(IrType, IrExpression, IrExpression) -> IrExpression,
-    ) :
-        DataClassMembersGenerator(
-            IrLoweringContext(context),
-            context.ir.symbols.externalSymbolTable,
-            irClass,
-            origin ?: IrDeclarationOrigin.DEFINED
-        ) {
-
-        constructor(nameForToString: String = this@MethodsFromAnyGeneratorForLowerings.irClass.name.asString()) : this(
-            nameForToString,
-            selectEquals = { _, arg1, arg2 ->
-                irNotEquals(
-                    arg1,
-                    arg2
-                )
-            })
-
-        override fun declareSimpleFunction(startOffset: Int, endOffset: Int, functionDescriptor: FunctionDescriptor): IrFunction {
-            error("Descriptor API shouldn't be used in lowerings")
-        }
-
-        override fun generateSyntheticFunctionParameterDeclarations(irFunction: IrFunction) {
-            // no-op — irFunction from lowering should already have necessary parameters
-        }
-
-        override fun getProperty(parameter: ValueParameterDescriptor?, irValueParameter: IrValueParameter?): IrProperty? {
-            error("Descriptor API shouldn't be used in lowerings")
-        }
-
-        override fun transform(typeParameterDescriptor: TypeParameterDescriptor): IrType {
-            error("Descriptor API shouldn't be used in lowerings")
-        }
-
-        override fun getHashCodeFunctionInfo(type: IrType): DataClassMembersGenerator.HashCodeFunctionInfo {
-            val symbol = getHashCodeFunctionSymbol(type)
-            return object : HashCodeFunctionInfo {
-                override val symbol: IrSimpleFunctionSymbol = symbol
-
-                override fun commitSubstituted(irMemberAccessExpression: IrMemberAccessExpression<*>) {}
-            }
-        }
-
-        override fun IrBlockBodyBuilder.notEqualsExpression(type: IrType, arg1: IrExpression, arg2: IrExpression): IrExpression {
-            return irNot(selectEquals(type, arg1, arg2))
-        }
-
-        override fun IrClass.classNameForToString(): String = nameForToString
-    }
-
-    companion object {
-        fun IrFunction.isToString(): Boolean =
-            name.asString() == "toString" && extensionReceiverParameter == null && valueParameters.isEmpty()
-
-        fun IrFunction.isHashCode() =
-            name.asString() == "hashCode" && extensionReceiverParameter == null && valueParameters.isEmpty()
-
-        fun IrFunction.isEquals(context: BackendContext) =
-            name.asString() == "equals" &&
-                    extensionReceiverParameter == null &&
-                    valueParameters.singleOrNull()?.type == context.irBuiltIns.anyNType
-
-
-        fun IrClass.collectOverridenSymbols(predicate: (IrFunction) -> Boolean): List<IrSimpleFunctionSymbol> =
-            superTypes.mapNotNull { it.getClass()?.functions?.singleOrNull(predicate)?.symbol }
-
-    }
-}

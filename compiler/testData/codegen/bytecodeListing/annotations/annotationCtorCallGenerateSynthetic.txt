@@ -18,7 +18,7 @@ public annotation class Foo {
 }
 
 @kotlin.Metadata
-synthetic final class FooImpl {
+synthetic final class annotationImpl$Foo$0 {
     // source: 'annotationCtorCallGenerateSynthetic.kt'
     private synthetic final field int: int
     public method <init>(p0: int): void
