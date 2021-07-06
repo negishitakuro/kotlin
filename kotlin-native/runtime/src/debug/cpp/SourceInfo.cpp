@@ -128,8 +128,10 @@ typedef struct {
 } SymbolSourceInfoLimits;
 
 extern "C" int Kotlin_getSourceInfo(void* addr, SourceInfo *result_buffer, int result_size) {
-  __block SourceInfo result = { .fileName = nullptr, .lineNumber = -1, .column = -1 };
+  __block SourceInfo inlinedTo = { .fileName = nullptr, .lineNumber = -1, .column = -1 };
+  __block SourceInfo inlinedFrom = { .fileName = nullptr, .lineNumber = -1, .column = -1 };
   __block bool continueUpdateResult = true;
+  __block bool hasInline = false;
   __block SymbolSourceInfoLimits limits = {.start = -1, .end = -1};
 
   static bool csIsAvailable = TryInitializeCoreSymbolication();
@@ -167,7 +169,7 @@ extern "C" int Kotlin_getSourceInfo(void* addr, SourceInfo *result_buffer, int r
     });
 
     SYM_LOG("limits: {%s %d..%d}\n", limits.fileName, limits.start, limits.end);
-    result.fileName = limits.fileName;
+    inlinedTo.fileName = limits.fileName;
 
     CSSymbolForeachSourceInfo(symbol,
       ^(CSSourceInfoRef ref) {
@@ -185,12 +187,17 @@ extern "C" int Kotlin_getSourceInfo(void* addr, SourceInfo *result_buffer, int r
            * but for a moment we have to track that we updating result info _only_ for upper level or _inlined at_ and
            * don't go deeper. at deeper level we check only that we at the right _inlined at_ position.
            */
-          if (continueUpdateResult
-              && strcmp(limits.fileName, fileName) == 0
-              && lineNumber >= limits.start
-              && lineNumber <= limits.end) {
-            result.lineNumber = lineNumber;
-            result.column = CSSourceInfoGetColumn(ref);
+          if (continueUpdateResult) {
+              inlinedFrom.fileName = fileName;
+              inlinedFrom.lineNumber = lineNumber;
+              inlinedFrom.column = CSSourceInfoGetColumn(ref);
+              if (strcmp(limits.fileName, fileName) == 0 && lineNumber >= limits.start && lineNumber <= limits.end) {
+                  inlinedTo.lineNumber = inlinedFrom.lineNumber;
+                  inlinedTo.column = inlinedFrom.column;
+                  hasInline = false;
+              } else {
+                  hasInline = true;
+              }
           }
           /**
            * if found right inlined function don't bother with
@@ -204,7 +211,12 @@ extern "C" int Kotlin_getSourceInfo(void* addr, SourceInfo *result_buffer, int r
    });
   }
   SYM_LOG("}\n");
-  result_buffer[0] = result;
+  if (hasInline && result_size > 1) {
+      result_buffer[0] = inlinedFrom;
+      result_buffer[1] = inlinedTo;
+      return 2;
+  }
+  result_buffer[0] = inlinedTo;
   return 1;
 }
 
