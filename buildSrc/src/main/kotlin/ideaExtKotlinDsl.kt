@@ -5,6 +5,7 @@ import org.gradle.api.NamedDomainObjectContainer
 import org.gradle.api.plugins.ExtensionAware
 import org.gradle.kotlin.dsl.configure
 import org.gradle.plugins.ide.idea.model.IdeaProject
+import org.jetbrains.gradle.ext.internal.DefaultRunConfigurationContainer
 import org.jetbrains.gradle.ext.*
 
 /*
