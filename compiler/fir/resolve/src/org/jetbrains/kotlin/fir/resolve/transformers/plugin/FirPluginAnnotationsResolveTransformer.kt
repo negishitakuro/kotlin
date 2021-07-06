@@ -90,7 +90,8 @@ private class FirAnnotationResolveTransformer(
     )
 
     private var owners: PersistentList<FirAnnotatedDeclaration> = persistentListOf()
-    protected val classDeclarations = mutableListOf<FirRegularClass>()
+    private val classDeclarationsStack = ArrayDeque<FirRegularClass>()
+    private val classDeclarations = mutableListOf<FirRegularClass>()
 
     override fun beforeChildren(declaration: FirAnnotatedDeclaration): PersistentList<FirAnnotatedDeclaration> {
         val current = owners
@@ -107,13 +108,17 @@ private class FirAnnotationResolveTransformer(
         annotationCall: FirAnnotationCall,
         data: Multimap<AnnotationFqn, FirRegularClass>
     ): FirStatement {
-        return annotationCall.transformAnnotationTypeRef(typeResolverTransformer, ScopeClassDeclaration(scope, listOf()))
+        return annotationCall.transformAnnotationTypeRef(
+            typeResolverTransformer,
+            ScopeClassDeclarations(scope, classDeclarationsStack.lastOrNull(), classDeclarations)
+        )
     }
 
     override fun transformRegularClass(
         regularClass: FirRegularClass,
         data: Multimap<AnnotationFqn, FirRegularClass>
     ): FirStatement {
+        classDeclarationsStack.add(regularClass)
         classDeclarations.add(regularClass)
         val result = super.transformRegularClass(regularClass, data).also {
             if (regularClass.classKind == ClassKind.ANNOTATION_CLASS && metaAnnotations.isNotEmpty()) {
@@ -123,7 +128,7 @@ private class FirAnnotationResolveTransformer(
                 }
             }
         }
-        classDeclarations.removeAt(classDeclarations.lastIndex)
+        classDeclarationsStack.removeLast()
         return result
     }
 

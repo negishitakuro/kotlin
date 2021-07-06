@@ -18,7 +18,7 @@ import org.jetbrains.kotlin.fir.resolve.dfa.DataFlowAnalyzerContext
 import org.jetbrains.kotlin.fir.resolve.transformers.FirProviderInterceptor
 import org.jetbrains.kotlin.fir.resolve.transformers.ReturnTypeCalculator
 import org.jetbrains.kotlin.fir.resolve.transformers.ReturnTypeCalculatorForFullBodyResolve
-import org.jetbrains.kotlin.fir.resolve.transformers.ScopeClassDeclaration
+import org.jetbrains.kotlin.fir.resolve.transformers.ScopeClassDeclarations
 import org.jetbrains.kotlin.fir.scopes.FirCompositeScope
 import org.jetbrains.kotlin.fir.scopes.impl.createCurrentScopeList
 import org.jetbrains.kotlin.fir.types.FirImplicitTypeRef
@@ -47,6 +47,7 @@ open class FirBodyResolveTransformer(
     internal open val expressionsTransformer = FirExpressionsResolveTransformer(this)
     protected open val declarationsTransformer = FirDeclarationsResolveTransformer(this)
     private val controlFlowStatementsTransformer = FirControlFlowStatementsResolveTransformer(this)
+    private val classDeclarationsStack = ArrayDeque<FirRegularClass>()
     private val classDeclarations = mutableListOf<FirRegularClass>()
 
     override fun transformFile(file: FirFile, data: ResolutionMode): FirFile {
@@ -70,7 +71,14 @@ open class FirBodyResolveTransformer(
             typeRef
         } else {
             typeResolverTransformer.withFile(context.file) {
-                transformTypeRef(typeRef, ScopeClassDeclaration(FirCompositeScope(components.createCurrentScopeList()), classDeclarations))
+                transformTypeRef(
+                    typeRef,
+                    ScopeClassDeclarations(
+                        FirCompositeScope(components.createCurrentScopeList()),
+                        classDeclarationsStack.lastOrNull(),
+                        classDeclarations
+                    )
+                )
             }
         }
         return resolvedTypeRef.transformAnnotations(this, data)
@@ -263,9 +271,10 @@ open class FirBodyResolveTransformer(
     }
 
     override fun transformRegularClass(regularClass: FirRegularClass, data: ResolutionMode): FirStatement {
+        classDeclarationsStack.add(regularClass)
         classDeclarations.add(regularClass)
         val result = declarationsTransformer.transformRegularClass(regularClass, data)
-        classDeclarations.removeAt(classDeclarations.lastIndex)
+        classDeclarationsStack.removeLast()
         return result
     }
 

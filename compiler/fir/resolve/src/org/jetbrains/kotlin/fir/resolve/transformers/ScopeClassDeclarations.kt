@@ -8,5 +8,8 @@ package org.jetbrains.kotlin.fir.resolve.transformers
 import org.jetbrains.kotlin.fir.declarations.FirRegularClass
 import org.jetbrains.kotlin.fir.scopes.FirScope
 
-data class ScopeClassDeclaration(val scope: FirScope, val classDeclarations: List<FirRegularClass>) {
-}
+data class ScopeClassDeclarations(
+    val scope: FirScope,
+    val topDeclaration: FirRegularClass?,
+    val classDeclarations: List<FirRegularClass>
+)

@@ -84,13 +84,13 @@ private fun checkOuterClassArgumentsRequired(
                                 reporter.reportOn(source, FirErrors.OUTER_CLASS_ARGUMENTS_REQUIRED, outerClass!!, context)
                             }
                         } else {
-                            reporter.reportOn(
+                            /*reporter.reportOn(
                                 source,
                                 FirErrors.WRONG_NUMBER_OF_TYPE_ARGUMENTS,
                                 symbol.fir.typeParameters.size - argumentsFromOuterClassesAndParentsCount,
                                 symbol,
                                 context
-                            )
+                            )*/
                         }
                     }
                 }

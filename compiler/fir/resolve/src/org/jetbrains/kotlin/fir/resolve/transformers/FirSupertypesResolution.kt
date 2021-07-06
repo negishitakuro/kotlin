@@ -215,6 +215,7 @@ open class FirSupertypeResolverVisitor(
     private val firProviderInterceptor: FirProviderInterceptor? = null,
 ) : FirDefaultVisitor<Unit, Any?>() {
     private val supertypeGenerationExtensions = session.extensionService.supertypeGenerators
+    private val classDeclarationsStack = ArrayDeque<FirRegularClass>()
     private val classDeclarations = mutableListOf<FirRegularClass>()
 
     private fun getFirClassifierContainerFileIfAny(symbol: FirClassLikeSymbol<*>): FirFile? =
@@ -292,7 +293,7 @@ open class FirSupertypeResolverVisitor(
 
     private fun resolveSpecificClassLikeSupertypes(
         classLikeDeclaration: FirClassLikeDeclaration,
-        resolveSuperTypeRefs: (FirTransformer<ScopeClassDeclaration>, ScopeClassDeclaration) -> List<FirResolvedTypeRef>
+        resolveSuperTypeRefs: (FirTransformer<ScopeClassDeclarations>, ScopeClassDeclarations) -> List<FirResolvedTypeRef>
     ): List<FirTypeRef> {
         when (val status = supertypeComputationSession.getSupertypesComputationStatus(classLikeDeclaration)) {
             is SupertypeComputationStatus.Computed -> return status.supertypeRefs
@@ -309,7 +310,10 @@ open class FirSupertypeResolverVisitor(
         val scopes = prepareScopes(classLikeDeclaration)
 
         val transformer = FirSpecificTypeResolverTransformer(session)
-        val resolvedTypesRefs = resolveSuperTypeRefs(transformer, ScopeClassDeclaration(FirCompositeScope(scopes), classDeclarations))
+        val resolvedTypesRefs = resolveSuperTypeRefs(
+            transformer,
+            ScopeClassDeclarations(FirCompositeScope(scopes), classDeclarationsStack.lastOrNull(), classDeclarations)
+        )
 
         supertypeComputationSession.storeSupertypes(classLikeDeclaration, resolvedTypesRefs)
         return resolvedTypesRefs
@@ -320,10 +324,11 @@ open class FirSupertypeResolverVisitor(
     }
 
     override fun visitRegularClass(regularClass: FirRegularClass, data: Any?) {
+        classDeclarationsStack.add(regularClass)
         classDeclarations.add(regularClass)
         resolveSpecificClassLikeSupertypes(regularClass, regularClass.superTypeRefs)
         visitDeclarationContent(regularClass, null)
-        classDeclarations.removeAt(classDeclarations.lastIndex)
+        classDeclarationsStack.removeLast()
     }
 
     override fun visitAnonymousObject(anonymousObject: FirAnonymousObject, data: Any?) {

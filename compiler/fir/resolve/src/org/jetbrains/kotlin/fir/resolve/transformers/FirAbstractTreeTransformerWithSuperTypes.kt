@@ -30,6 +30,7 @@ abstract class FirAbstractTreeTransformerWithSuperTypes(
     protected val scopeSession: ScopeSession
 ) : FirAbstractTreeTransformer<Any?>(phase) {
     protected val scopes = mutableListOf<FirScope>()
+    protected val classDeclarationsStack = ArrayDeque<FirRegularClass>()
     protected val classDeclarations = mutableListOf<FirRegularClass>()
     protected val towerScope = FirCompositeScope(scopes.asReversed())
 
@@ -47,9 +48,10 @@ abstract class FirAbstractTreeTransformerWithSuperTypes(
     }
 
     protected inline fun <T> withClassDeclarationCleanup(declaration: FirRegularClass, crossinline l: () -> T): T {
+        classDeclarationsStack.add(declaration)
         classDeclarations.add(declaration)
         val result = l()
-        classDeclarations.removeAt(classDeclarations.lastIndex)
+        classDeclarationsStack.removeLast()
         return result
     }
 
