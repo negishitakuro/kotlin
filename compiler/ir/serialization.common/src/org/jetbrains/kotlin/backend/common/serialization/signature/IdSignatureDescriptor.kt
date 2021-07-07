@@ -17,15 +17,23 @@ import org.jetbrains.kotlin.renderer.DescriptorRenderer
 
 open class IdSignatureDescriptor(private val mangler: KotlinMangler.DescriptorMangler) : IdSignatureComposer {
 
-    protected open fun createSignatureBuilder(type: SpecialDeclarationType): DescriptorBasedSignatureBuilder = DescriptorBasedSignatureBuilder(mangler, type)
+    protected open fun createSignatureBuilder(
+        type: SpecialDeclarationType,
+        forceExported: Boolean = false
+    ): DescriptorBasedSignatureBuilder = DescriptorBasedSignatureBuilder(mangler, type, forceExported)
 
-    protected open inner class DescriptorBasedSignatureBuilder(private val mangler: KotlinMangler.DescriptorMangler, private val type: SpecialDeclarationType) :
+    protected open inner class DescriptorBasedSignatureBuilder(
+        private val mangler: KotlinMangler.DescriptorMangler,
+        private val type: SpecialDeclarationType,
+        forceExported: Boolean = false
+    ) :
         IdSignatureBuilder<DeclarationDescriptor>(),
         DeclarationDescriptorVisitor<Unit, Nothing?> {
 
+        override val forceExported: Boolean = forceExported
+
         override fun accept(d: DeclarationDescriptor) {
             d.accept(this, null)
-            assert(!isTopLevelPrivate) { "$d is Top level private" }
         }
 
         private fun createContainer() {
@@ -174,25 +182,25 @@ open class IdSignatureDescriptor(private val mangler: KotlinMangler.DescriptorMa
 
     override fun composeSignature(descriptor: DeclarationDescriptor): IdSignature? {
         return if (mangler.run { descriptor.isExported(compatibleMode = false) })
-            createSignatureBuilder(SpecialDeclarationType.REGULAR).buildSignature(descriptor)
+            createSignatureBuilder(SpecialDeclarationType.REGULAR, forceExported = true).buildSignature(descriptor)
         else null
     }
 
     override fun composeEnumEntrySignature(descriptor: ClassDescriptor): IdSignature? {
         return if (mangler.run { descriptor.isExported(compatibleMode = false) })
-            createSignatureBuilder(SpecialDeclarationType.ENUM_ENTRY).buildSignature(descriptor)
+            createSignatureBuilder(SpecialDeclarationType.ENUM_ENTRY, forceExported = true).buildSignature(descriptor)
         else null
     }
 
     override fun composeFieldSignature(descriptor: PropertyDescriptor): IdSignature? {
         return if (mangler.run { descriptor.isExported(compatibleMode = false) }) {
-            createSignatureBuilder(SpecialDeclarationType.BACKING_FIELD).buildSignature(descriptor)
+            createSignatureBuilder(SpecialDeclarationType.BACKING_FIELD, forceExported = true).buildSignature(descriptor)
         } else null
     }
 
     override fun composeAnonInitSignature(descriptor: ClassDescriptor): IdSignature? {
         return if (mangler.run { descriptor.isExported(compatibleMode = false) })
-            createSignatureBuilder(SpecialDeclarationType.ANON_INIT).buildSignature(descriptor)
+            createSignatureBuilder(SpecialDeclarationType.ANON_INIT, forceExported = true).buildSignature(descriptor)
         else null
     }
 }

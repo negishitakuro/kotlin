@@ -66,6 +66,8 @@ class PublicIdSignatureComputer(val mangler: KotlinMangler.IrMangler) : IdSignat
         override val currentFileSignature: IdSignature.FileSignature?
             get() = currentFileSignatureX
 
+        override val forceExported: Boolean = true
+
         override fun accept(d: IrDeclaration) {
             d.acceptVoid(this)
         }

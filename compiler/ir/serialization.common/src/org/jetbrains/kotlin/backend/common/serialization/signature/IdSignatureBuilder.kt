@@ -21,6 +21,8 @@ abstract class IdSignatureBuilder<D> {
 
     protected var isTopLevelPrivate: Boolean = false
 
+    protected open val forceExported = false
+
     protected abstract val currentFileSignature: IdSignature.FileSignature?
 
     protected abstract fun accept(d: D)
@@ -56,7 +58,7 @@ abstract class IdSignatureBuilder<D> {
                 val overriddenSignatures = preserved.map { buildSignature(it) }
                 return IdSignature.SpecialFakeOverrideSignature(memberSignature, overriddenSignatures)
             }
-            isTopLevelPrivate -> {
+            isTopLevelPrivate && !forceExported -> {
                 val fileSig = currentFileSignature
                     ?: error("File expected to be not null ($packageFqName, $classFqName)")
                 isTopLevelPrivate = false

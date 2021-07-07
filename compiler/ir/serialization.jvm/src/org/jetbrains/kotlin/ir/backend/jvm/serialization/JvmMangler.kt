@@ -15,10 +15,7 @@ import org.jetbrains.kotlin.backend.common.serialization.mangle.descriptor.Descr
 import org.jetbrains.kotlin.backend.common.serialization.mangle.ir.IrBasedKotlinManglerImpl
 import org.jetbrains.kotlin.backend.common.serialization.mangle.ir.IrExportCheckerVisitor
 import org.jetbrains.kotlin.backend.common.serialization.mangle.ir.IrMangleComputer
-import org.jetbrains.kotlin.descriptors.DeclarationDescriptor
-import org.jetbrains.kotlin.descriptors.FunctionDescriptor
-import org.jetbrains.kotlin.descriptors.ModuleDescriptor
-import org.jetbrains.kotlin.descriptors.PropertyDescriptor
+import org.jetbrains.kotlin.descriptors.*
 import org.jetbrains.kotlin.idea.MainFunctionDetector
 import org.jetbrains.kotlin.ir.declarations.*
 import org.jetbrains.kotlin.ir.util.isFacadeClass
@@ -60,7 +57,9 @@ abstract class AbstractJvmDescriptorMangler(private val mainDetector: MainFuncti
     }
 
     private class JvmDescriptorExportChecker : DescriptorExportCheckerVisitor() {
-        override fun DeclarationDescriptor.isPlatformSpecificExported() = false
+        override fun DeclarationDescriptor.isPlatformSpecificExported(): Boolean {
+            return (this is ClassDescriptor && containingDeclaration is PackageFragmentDescriptor)
+        }
     }
 
     private class JvmDescriptorManglerComputer(

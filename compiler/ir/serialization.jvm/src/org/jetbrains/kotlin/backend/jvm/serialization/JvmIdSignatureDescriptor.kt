@@ -21,7 +21,11 @@ import org.jetbrains.kotlin.utils.addToStdlib.cast
 
 class JvmIdSignatureDescriptor(private val mangler: KotlinMangler.DescriptorMangler) : IdSignatureDescriptor(mangler) {
 
-    private inner class JvmDescriptorBasedSignatureBuilder(mangler: KotlinMangler.DescriptorMangler, type: SpecialDeclarationType) : DescriptorBasedSignatureBuilder(mangler, type) {
+    private inner class JvmDescriptorBasedSignatureBuilder(
+        mangler: KotlinMangler.DescriptorMangler,
+        type: SpecialDeclarationType,
+        forceExported: Boolean = false
+    ) : DescriptorBasedSignatureBuilder(mangler, type, forceExported) {
         override fun platformSpecificFunction(descriptor: FunctionDescriptor) {
             keepTrackOfOverridesForPossiblyClashingFakeOverride(descriptor)
         }
@@ -106,6 +110,6 @@ class JvmIdSignatureDescriptor(private val mangler: KotlinMangler.DescriptorMang
             }
     }
 
-    override fun createSignatureBuilder(type: SpecialDeclarationType): DescriptorBasedSignatureBuilder =
-        JvmDescriptorBasedSignatureBuilder(mangler, type)
+    override fun createSignatureBuilder(type: SpecialDeclarationType, forceExported: Boolean): DescriptorBasedSignatureBuilder =
+        JvmDescriptorBasedSignatureBuilder(mangler, type, forceExported)
 }

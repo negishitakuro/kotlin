@@ -15,6 +15,7 @@ import org.jetbrains.kotlin.ir.declarations.*
 import org.jetbrains.kotlin.ir.expressions.IrConstructorCall
 import org.jetbrains.kotlin.ir.util.constructedClass
 import org.jetbrains.kotlin.ir.util.hasAnnotation
+import org.jetbrains.kotlin.ir.util.isTopLevelDeclaration
 import org.jetbrains.kotlin.ir.util.render
 import org.jetbrains.kotlin.ir.visitors.IrElementVisitor
 import org.jetbrains.kotlin.name.Name
@@ -91,7 +92,7 @@ abstract class IrExportCheckerVisitor(private val compatibleMode: Boolean) : Kot
             val selfExported = speciallyExported || visibility == null || visibility.isPubliclyVisible()
 
             return selfExported &&
-                    (this is IrClass && !isInner || parent.accept(this@CompatibleChecker, null))
+                    (this is IrClass && isTopLevelDeclaration || parent.accept(this@CompatibleChecker, null))
         }
 
         private fun DescriptorVisibility.isPubliclyVisible(): Boolean = isPublicAPI || this === DescriptorVisibilities.INTERNAL

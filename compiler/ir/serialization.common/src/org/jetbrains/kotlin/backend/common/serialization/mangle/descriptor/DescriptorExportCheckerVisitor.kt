@@ -23,7 +23,7 @@ abstract class DescriptorExportCheckerVisitor : DeclarationDescriptorVisitor<Boo
 
     private fun DeclarationDescriptorNonRoot.isExported(annotations: Annotations, visibility: DescriptorVisibility?): Boolean {
         if (visibility == DescriptorVisibilities.LOCAL) return false
-        return if (containingDeclaration is PackageFragmentDescriptor || (this is ClassDescriptor && !isInner)) {
+        return if (containingDeclaration is PackageFragmentDescriptor) {
             val speciallyExported = annotations.hasAnnotation(publishedApiAnnotation) || isPlatformSpecificExported()
             return speciallyExported || visibility?.isPubliclyVisible() ?: error("VISIBILITY == null: $this")
         } else containingDeclaration.accept(this@DescriptorExportCheckerVisitor, SpecialDeclarationType.REGULAR)
