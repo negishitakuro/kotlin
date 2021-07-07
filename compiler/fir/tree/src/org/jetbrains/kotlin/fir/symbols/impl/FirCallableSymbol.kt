@@ -5,15 +5,52 @@
 
 package org.jetbrains.kotlin.fir.symbols.impl
 
-import org.jetbrains.kotlin.fir.declarations.FirCallableDeclaration
-import org.jetbrains.kotlin.fir.declarations.FirFunction
-import org.jetbrains.kotlin.fir.declarations.FirProperty
-import org.jetbrains.kotlin.fir.declarations.FirMemberDeclaration
+import org.jetbrains.kotlin.fir.declarations.*
 import org.jetbrains.kotlin.fir.symbols.FirBasedSymbol
+import org.jetbrains.kotlin.fir.symbols.ensureResolved
+import org.jetbrains.kotlin.fir.types.*
 import org.jetbrains.kotlin.name.CallableId
+import org.jetbrains.kotlin.name.Name
 
 abstract class FirCallableSymbol<D : FirCallableDeclaration> : FirBasedSymbol<D>() {
     abstract val callableId: CallableId
+
+    val resolvedReturnTypeRef: FirResolvedTypeRef
+        get() {
+            ensureRegularType(fir.returnTypeRef)
+            return fir.returnTypeRef as FirResolvedTypeRef
+        }
+
+    val resolvedReceiverTypeRef: FirResolvedTypeRef?
+        get() {
+            ensureRegularType(fir.receiverTypeRef)
+            return fir.receiverTypeRef as FirResolvedTypeRef?
+        }
+
+    val resolvedStatus: FirResolvedDeclarationStatus
+        get() {
+            ensureResolved(FirResolvePhase.STATUS)
+            return fir.status as FirResolvedDeclarationStatus
+        }
+
+    val typeParameterSymbols: List<FirTypeParameterSymbol>
+        get() {
+            return fir.typeParameters.map { it.symbol }
+        }
+
+    val dispatchReceiverType: ConeKotlinType?
+        get() = fir.dispatchReceiverType
+
+    val name: Name
+        get() = callableId.callableName
+
+    protected fun ensureRegularType(typeRef: FirTypeRef?) {
+        when (typeRef) {
+            null, is FirResolvedTypeRef -> {}
+            is FirImplicitTypeRef -> ensureResolved(FirResolvePhase.IMPLICIT_TYPES_BODY_RESOLVE)
+            else -> ensureResolved(FirResolvePhase.TYPES)
+        }
+    }
 
     override fun toString(): String = "${this::class.simpleName} $callableId"
 }
