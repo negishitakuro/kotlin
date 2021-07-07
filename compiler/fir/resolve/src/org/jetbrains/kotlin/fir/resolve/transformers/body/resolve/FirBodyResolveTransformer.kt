@@ -13,6 +13,7 @@ import org.jetbrains.kotlin.fir.expressions.*
 import org.jetbrains.kotlin.fir.render
 import org.jetbrains.kotlin.fir.resolve.ResolutionMode
 import org.jetbrains.kotlin.fir.resolve.ScopeSession
+import org.jetbrains.kotlin.fir.resolve.addTypeParametersIfNotExist
 import org.jetbrains.kotlin.fir.resolve.calls.ResolutionContext
 import org.jetbrains.kotlin.fir.resolve.dfa.DataFlowAnalyzerContext
 import org.jetbrains.kotlin.fir.resolve.transformers.FirProviderInterceptor
@@ -21,6 +22,7 @@ import org.jetbrains.kotlin.fir.resolve.transformers.ReturnTypeCalculatorForFull
 import org.jetbrains.kotlin.fir.resolve.transformers.ScopeClassDeclarations
 import org.jetbrains.kotlin.fir.scopes.FirCompositeScope
 import org.jetbrains.kotlin.fir.scopes.impl.createCurrentScopeList
+import org.jetbrains.kotlin.fir.symbols.impl.FirTypeParameterSymbol
 import org.jetbrains.kotlin.fir.types.FirImplicitTypeRef
 import org.jetbrains.kotlin.fir.types.FirResolvedTypeRef
 import org.jetbrains.kotlin.fir.types.FirTypeRef
@@ -49,6 +51,7 @@ open class FirBodyResolveTransformer(
     private val controlFlowStatementsTransformer = FirControlFlowStatementsResolveTransformer(this)
     private val classDeclarationsStack = ArrayDeque<FirRegularClass>()
     private val classDeclarations = mutableListOf<FirRegularClass>()
+    private val typeParameterToClassMap = mutableMapOf<FirTypeParameterSymbol, FirRegularClass>()
 
     override fun transformFile(file: FirFile, data: ResolutionMode): FirFile {
         checkSessionConsistency(file)
@@ -76,7 +79,8 @@ open class FirBodyResolveTransformer(
                     ScopeClassDeclarations(
                         FirCompositeScope(components.createCurrentScopeList()),
                         classDeclarationsStack.lastOrNull(),
-                        classDeclarations
+                        classDeclarations,
+                        typeParameterToClassMap
                     )
                 )
             }
@@ -273,7 +277,10 @@ open class FirBodyResolveTransformer(
     override fun transformRegularClass(regularClass: FirRegularClass, data: ResolutionMode): FirStatement {
         classDeclarationsStack.add(regularClass)
         classDeclarations.add(regularClass)
+        typeParameterToClassMap.addTypeParametersIfNotExist(regularClass)
+
         val result = declarationsTransformer.transformRegularClass(regularClass, data)
+
         classDeclarationsStack.removeLast()
         return result
     }

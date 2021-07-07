@@ -33,6 +33,7 @@ import org.jetbrains.kotlin.fir.scopes.impl.wrapNestedClassifierScopeWithSubstit
 import org.jetbrains.kotlin.fir.symbols.impl.FirClassLikeSymbol
 import org.jetbrains.kotlin.fir.symbols.impl.FirRegularClassSymbol
 import org.jetbrains.kotlin.fir.symbols.impl.FirTypeAliasSymbol
+import org.jetbrains.kotlin.fir.symbols.impl.FirTypeParameterSymbol
 import org.jetbrains.kotlin.fir.types.*
 import org.jetbrains.kotlin.fir.types.builder.buildErrorTypeRef
 import org.jetbrains.kotlin.fir.visitors.FirDefaultTransformer
@@ -217,6 +218,7 @@ open class FirSupertypeResolverVisitor(
     private val supertypeGenerationExtensions = session.extensionService.supertypeGenerators
     private val classDeclarationsStack = ArrayDeque<FirRegularClass>()
     private val classDeclarations = mutableListOf<FirRegularClass>()
+    private val typeParameterToClassMap = mutableMapOf<FirTypeParameterSymbol, FirRegularClass>()
 
     private fun getFirClassifierContainerFileIfAny(symbol: FirClassLikeSymbol<*>): FirFile? =
         if (firProviderInterceptor != null) firProviderInterceptor.getFirClassifierContainerFileIfAny(symbol)
@@ -312,7 +314,7 @@ open class FirSupertypeResolverVisitor(
         val transformer = FirSpecificTypeResolverTransformer(session)
         val resolvedTypesRefs = resolveSuperTypeRefs(
             transformer,
-            ScopeClassDeclarations(FirCompositeScope(scopes), classDeclarationsStack.lastOrNull(), classDeclarations)
+            ScopeClassDeclarations(FirCompositeScope(scopes), classDeclarationsStack.lastOrNull(), classDeclarations, typeParameterToClassMap)
         )
 
         supertypeComputationSession.storeSupertypes(classLikeDeclaration, resolvedTypesRefs)
@@ -325,9 +327,12 @@ open class FirSupertypeResolverVisitor(
 
     override fun visitRegularClass(regularClass: FirRegularClass, data: Any?) {
         classDeclarationsStack.add(regularClass)
+        typeParameterToClassMap.addTypeParametersIfNotExist(regularClass)
         classDeclarations.add(regularClass)
+
         resolveSpecificClassLikeSupertypes(regularClass, regularClass.superTypeRefs)
         visitDeclarationContent(regularClass, null)
+
         classDeclarationsStack.removeLast()
     }
 

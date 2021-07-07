@@ -10,7 +10,6 @@ import org.jetbrains.kotlin.fir.FirSession
 import org.jetbrains.kotlin.fir.FirSourceElement
 import org.jetbrains.kotlin.fir.ThreadSafeMutableState
 import org.jetbrains.kotlin.fir.declarations.FirRegularClass
-import org.jetbrains.kotlin.fir.declarations.FirTypeParameterRef
 import org.jetbrains.kotlin.fir.diagnostics.ConeUnexpectedTypeArgumentsError
 import org.jetbrains.kotlin.fir.render
 import org.jetbrains.kotlin.fir.resolve.*
@@ -27,6 +26,7 @@ import org.jetbrains.kotlin.fir.types.impl.ConeClassLikeTypeImpl
 import org.jetbrains.kotlin.fir.types.impl.ConeTypeParameterTypeImpl
 import org.jetbrains.kotlin.fir.types.impl.FirImplicitBuiltinTypeRef
 import org.jetbrains.kotlin.name.ClassId
+import org.jetbrains.kotlin.name.Name
 
 @ThreadSafeMutableState
 class FirTypeResolverImpl(private val session: FirSession) : FirTypeResolver() {
@@ -123,74 +123,130 @@ class FirTypeResolverImpl(private val session: FirSession) : FirTypeResolver() {
             }
         }
 
-        var typeArguments = typeRef.qualifier.toTypeProjections()
+        val typeArguments = mutableListOf<ConeTypeProjection>()
+        val typeArgumentToClassNameMap = mutableMapOf<Name, List<MatchingTypeArgument>>()
+        val orderedTypeArguments = mutableListOf<MatchingTypeArgument>()
+
+        val qualifier = typeRef.qualifier
+        for (i in qualifier.size - 1 downTo 0) {
+            val qualifierTypeArguments = qualifier[i].typeArgumentList.typeArguments
+            if (qualifierTypeArguments.isNotEmpty()) {
+                val matchingTypeArguments = mutableListOf<MatchingTypeArgument>()
+                for (qualifierTypeArgument in qualifierTypeArguments) {
+                    typeArguments.add(qualifierTypeArgument.toConeTypeProjection())
+                    val matchingTypeArgument = MatchingTypeArgument(qualifierTypeArgument, false)
+                    orderedTypeArguments.add(matchingTypeArgument)
+                    matchingTypeArguments.add(matchingTypeArgument)
+                }
+                typeArgumentToClassNameMap[qualifier[i].name] = matchingTypeArguments
+            }
+        }
+
         if (symbol is FirRegularClassSymbol) {
             val isPossibleBareType = areBareTypesAllowed && typeArguments.isEmpty()
-            if (typeArguments.size != symbol.fir.typeParameters.size && !isPossibleBareType) {
-                if (symbol.fir.typeParameters.size < typeArguments.size) {
-                    return ConeClassErrorType(
-                        ConeWrongNumberOfTypeArgumentsError(
-                            symbol.fir.typeParameters.size,
-                            symbol,
-                            symbol.fir,
-                            getTypeArgumentsOrNameSource(symbol.fir)
-                        )
-                    )
-                } else {
-                    val actualSubstitutor = substitutor ?: ConeSubstitutor.Empty
-                    var problemClassArgument: FirTypeParameterRef? = null
-                    var outerClassArgumentRequired = false
-                    val topDeclaration = scopeClassDeclarations.topDeclaration
-                    val argumentsFromOuterClassesAndParents = symbol.fir.typeParameters.drop(typeArguments.size).mapNotNull {
-                        if (isValidTypeParameter(it, topDeclaration, session)) {
-                            val type = ConeTypeParameterTypeImpl(ConeTypeParameterLookupTag(it.symbol), isNullable = false)
-                            // we should report ConeSimpleDiagnostic(..., WrongNumberOfTypeArguments)
-                            // but genericArgumentNumberMismatch.kt test fails with
-                            // index out of bounds exception for start offset of
-                            // the source
-                            val substituted = actualSubstitutor.substituteOrNull(type)
-                            if (substituted == null && problemClassArgument == null) {
-                                problemClassArgument = it
+            if (!isPossibleBareType) {
+                val actualSubstitutor = substitutor ?: ConeSubstitutor.Empty
+                var errorType: TypeArgumentsErrorType? = null
+                var errorClass: FirRegularClass? = null
+                val topDeclaration = scopeClassDeclarations.topDeclaration
+                val typeParameterToClassMap = scopeClassDeclarations.typeParameterToClassMap
+
+                for ((index, typeParameter) in symbol.fir.typeParameters.withIndex()) {
+                    val parameterClass = typeParameterToClassMap[typeParameter.symbol]
+
+                    // Check if the argument matches a parameter
+                    if (parameterClass != null) {
+                        val args = typeArgumentToClassNameMap[parameterClass.name]
+                        if (args != null) {
+                            val localIndex = parameterClass.typeParameters.indexOfFirst { it.symbol == typeParameter.symbol }
+                            if (localIndex >= args.size) {
+                                if (errorType == null) {
+                                    errorType = TypeArgumentsErrorType.WrongNumberOfTypeArguments
+                                    errorClass = parameterClass
+                                }
+                            } else {
+                                args[localIndex].isMatched = true
                             }
-                            substituted
-                        } else {
-                            if (problemClassArgument == null) {
-                                problemClassArgument = it
-                            }
-                            outerClassArgumentRequired = true
-                            null
+                            continue
                         }
-                    }.toTypedArray<ConeTypeProjection>()
-                    typeArguments += argumentsFromOuterClassesAndParents
+                    } else {
+                        if (index < orderedTypeArguments.size) {
+                            orderedTypeArguments[index].isMatched = true
+                            continue
+                        }
+                    }
 
-                    if (typeArguments.size != symbol.fir.typeParameters.size) {
-                        val problemClass = scopeClassDeclarations.classDeclarations.firstOrNull {
-                            it.typeParameters.any { typeParameter -> problemClassArgument?.symbol == typeParameter.symbol }
-                        } ?: symbol.fir
-
-                        return if (outerClassArgumentRequired) {
-                            ConeClassErrorType(ConeOuterClassArgumentsRequired(problemClass))
+                    if (isValidTypeParameterFromOuterClass(typeParameter, topDeclaration, session)) {
+                        val type = ConeTypeParameterTypeImpl(ConeTypeParameterLookupTag(typeParameter.symbol), isNullable = false)
+                        // we should report ConeSimpleDiagnostic(..., WrongNumberOfTypeArguments)
+                        // but genericArgumentNumberMismatch.kt test fails with
+                        // index out of bounds exception for start offset of
+                        // the source
+                        val substituted = actualSubstitutor.substituteOrNull(type)
+                        if (substituted == null) {
+                            if (errorType == null) {
+                                errorType = TypeArgumentsErrorType.WrongNumberOfTypeArguments
+                                errorClass = parameterClass
+                            }
                         } else {
-                            ConeClassErrorType(
-                                ConeWrongNumberOfTypeArgumentsError(
-                                    problemClass.typeParameters.size,
-                                    symbol,
-                                    problemClass,
-                                    getTypeArgumentsOrNameSource(problemClass)
-                                )
+                            typeArguments.add(substituted)
+                        }
+                    } else {
+                        if (errorType == null) {
+                            errorType = TypeArgumentsErrorType.OuterClassArgumentsRequired
+                            errorClass = parameterClass
+                        }
+                    }
+                }
+
+                if (errorType == null) {
+                    // Check if any type argument not matches type parameter
+                    var name: Name? = null
+                    val notProcessedTypeArgument = typeArgumentToClassNameMap.firstNotNullOfOrNull {
+                        name = it.key
+                        it.value.firstOrNull { matchingTypeArgument -> !matchingTypeArgument.isMatched }
+                    }
+
+                    if (notProcessedTypeArgument != null && name != null) {
+                        errorType = TypeArgumentsErrorType.WrongNumberOfTypeArguments
+                        // Don't worry about linear complexity because it's rare case
+                        errorClass = scopeClassDeclarations.allDeclarations.firstOrNull { declaration -> declaration.name == name }
+                    }
+                }
+
+                if (errorType != null) {
+                    val actualProblemClass = errorClass ?: symbol.fir
+
+                    return if (errorType == TypeArgumentsErrorType.OuterClassArgumentsRequired) {
+                        ConeClassErrorType(ConeOuterClassArgumentsRequired(actualProblemClass))
+                    } else {
+                        val actualTypeParametersCount = actualProblemClass.typeParameters.size // TODO: incorrect count
+                        ConeClassErrorType(
+                            ConeWrongNumberOfTypeArgumentsError(
+                                actualTypeParametersCount,
+                                symbol,
+                                actualProblemClass,
+                                getTypeArgumentsOrNameSource(actualProblemClass)
                             )
-                        }
+                        )
                     }
                 }
             }
         }
-        return symbol.constructType(typeArguments, typeRef.isMarkedNullable, typeRef.annotations.computeTypeAttributes())
+        return symbol.constructType(typeArguments.toTypedArray(), typeRef.isMarkedNullable, typeRef.annotations.computeTypeAttributes())
             .also {
                 val lookupTag = it.lookupTag
                 if (lookupTag is ConeClassLikeLookupTagImpl && symbol is FirClassLikeSymbol<*>) {
                     lookupTag.bindSymbolToLookupTag(session, symbol)
                 }
             }
+    }
+
+    data class MatchingTypeArgument(val typeProjection: FirTypeProjection, var isMatched: Boolean)
+
+    enum class TypeArgumentsErrorType {
+        WrongNumberOfTypeArguments,
+        OuterClassArgumentsRequired
     }
 
     private fun createFunctionalType(typeRef: FirFunctionTypeRef): ConeClassLikeType {

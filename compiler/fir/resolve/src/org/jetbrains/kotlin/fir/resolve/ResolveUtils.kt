@@ -450,7 +450,7 @@ fun FirFunction.getAsForbiddenNamedArgumentsTarget(session: FirSession): Forbidd
 //  org.jetbrains.kotlin.fir.serialization.FirElementSerializer.constructorProto
 fun FirFunction.getHasStableParameterNames(session: FirSession): Boolean = getAsForbiddenNamedArgumentsTarget(session) == null
 
-fun isValidTypeParameter(typeParameter: FirTypeParameterRef, classDeclaration: FirRegularClass?, session: FirSession): Boolean {
+fun isValidTypeParameterFromOuterClass(typeParameter: FirTypeParameterRef, classDeclaration: FirRegularClass?, session: FirSession): Boolean {
     if (typeParameter !is FirOuterClassTypeParameterRef || classDeclaration == null) {
         return true
     }
@@ -489,4 +489,13 @@ fun getClassThatContainsTypeParameter(klass: FirRegularClass, typeParameter: Fir
     }
 
     return null
+}
+
+fun MutableMap<FirTypeParameterSymbol, FirRegularClass>.addTypeParametersIfNotExist(regularClass: FirRegularClass) {
+    for (typeParameter in regularClass.typeParameters) {
+        val symbol = typeParameter.symbol
+        if (!this.containsKey(symbol)) {
+            this[symbol] = regularClass
+        }
+    }
 }

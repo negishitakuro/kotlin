@@ -188,7 +188,7 @@ open class FirTypeResolveTransformer(
         return typeResolverTransformer.withFile(currentFile) {
             typeRef.transform(
                 typeResolverTransformer,
-                ScopeClassDeclarations(towerScope, classDeclarationsStack.lastOrNull(), classDeclarations)
+                ScopeClassDeclarations(towerScope, classDeclarationsStack.lastOrNull(), classDeclarations, typeParameterToClassMap)
             )
         }
     }

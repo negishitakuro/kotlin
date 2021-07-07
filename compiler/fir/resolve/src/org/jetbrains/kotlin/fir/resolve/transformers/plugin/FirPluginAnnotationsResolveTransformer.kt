@@ -20,8 +20,10 @@ import org.jetbrains.kotlin.fir.expressions.FirAnnotationCall
 import org.jetbrains.kotlin.fir.expressions.FirStatement
 import org.jetbrains.kotlin.fir.extensions.*
 import org.jetbrains.kotlin.fir.resolve.ScopeSession
+import org.jetbrains.kotlin.fir.resolve.addTypeParametersIfNotExist
 import org.jetbrains.kotlin.fir.resolve.fqName
 import org.jetbrains.kotlin.fir.resolve.transformers.*
+import org.jetbrains.kotlin.fir.symbols.impl.FirTypeParameterSymbol
 import org.jetbrains.kotlin.name.FqName
 
 class FirPluginAnnotationsResolveProcessor(session: FirSession, scopeSession: ScopeSession) : FirTransformerBasedResolveProcessor(session, scopeSession) {
@@ -92,6 +94,7 @@ private class FirAnnotationResolveTransformer(
     private var owners: PersistentList<FirAnnotatedDeclaration> = persistentListOf()
     private val classDeclarationsStack = ArrayDeque<FirRegularClass>()
     private val classDeclarations = mutableListOf<FirRegularClass>()
+    private val typeParameterToClassMap = mutableMapOf<FirTypeParameterSymbol, FirRegularClass>()
 
     override fun beforeChildren(declaration: FirAnnotatedDeclaration): PersistentList<FirAnnotatedDeclaration> {
         val current = owners
@@ -110,7 +113,7 @@ private class FirAnnotationResolveTransformer(
     ): FirStatement {
         return annotationCall.transformAnnotationTypeRef(
             typeResolverTransformer,
-            ScopeClassDeclarations(scope, classDeclarationsStack.lastOrNull(), classDeclarations)
+            ScopeClassDeclarations(scope, classDeclarationsStack.lastOrNull(), classDeclarations, typeParameterToClassMap)
         )
     }
 
@@ -120,6 +123,7 @@ private class FirAnnotationResolveTransformer(
     ): FirStatement {
         classDeclarationsStack.add(regularClass)
         classDeclarations.add(regularClass)
+        typeParameterToClassMap.addTypeParametersIfNotExist(regularClass)
         val result = super.transformRegularClass(regularClass, data).also {
             if (regularClass.classKind == ClassKind.ANNOTATION_CLASS && metaAnnotations.isNotEmpty()) {
                 val annotations = regularClass.annotations.mapNotNull { it.fqName(session) }

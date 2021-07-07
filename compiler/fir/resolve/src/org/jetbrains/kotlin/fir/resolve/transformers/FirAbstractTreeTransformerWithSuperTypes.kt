@@ -11,6 +11,7 @@ import org.jetbrains.kotlin.fir.diagnostics.ConeSimpleDiagnostic
 import org.jetbrains.kotlin.fir.diagnostics.DiagnosticKind
 import org.jetbrains.kotlin.fir.expressions.FirStatement
 import org.jetbrains.kotlin.fir.resolve.ScopeSession
+import org.jetbrains.kotlin.fir.resolve.addTypeParametersIfNotExist
 import org.jetbrains.kotlin.fir.resolve.lookupSuperTypes
 import org.jetbrains.kotlin.fir.resolve.substitution.ConeSubstitutor
 import org.jetbrains.kotlin.fir.resolve.substitution.ConeSubstitutorByMap
@@ -21,6 +22,7 @@ import org.jetbrains.kotlin.fir.scopes.getNestedClassifierScope
 import org.jetbrains.kotlin.fir.scopes.impl.FirMemberTypeParameterScope
 import org.jetbrains.kotlin.fir.scopes.impl.nestedClassifierScope
 import org.jetbrains.kotlin.fir.scopes.impl.wrapNestedClassifierScopeWithSubstitutionForSuperType
+import org.jetbrains.kotlin.fir.symbols.impl.FirTypeParameterSymbol
 import org.jetbrains.kotlin.fir.types.ConeClassErrorType
 import org.jetbrains.kotlin.fir.types.ConeKotlinType
 import org.jetbrains.kotlin.fir.types.ConeLookupTagBasedType
@@ -32,6 +34,7 @@ abstract class FirAbstractTreeTransformerWithSuperTypes(
     protected val scopes = mutableListOf<FirScope>()
     protected val classDeclarationsStack = ArrayDeque<FirRegularClass>()
     protected val classDeclarations = mutableListOf<FirRegularClass>()
+    protected val typeParameterToClassMap = mutableMapOf<FirTypeParameterSymbol, FirRegularClass>()
     protected val towerScope = FirCompositeScope(scopes.asReversed())
 
     protected open fun needReplacePhase(firDeclaration: FirDeclaration): Boolean = transformerPhase > firDeclaration.resolvePhase
@@ -50,7 +53,10 @@ abstract class FirAbstractTreeTransformerWithSuperTypes(
     protected inline fun <T> withClassDeclarationCleanup(declaration: FirRegularClass, crossinline l: () -> T): T {
         classDeclarationsStack.add(declaration)
         classDeclarations.add(declaration)
+        typeParameterToClassMap.addTypeParametersIfNotExist(declaration)
+        
         val result = l()
+
         classDeclarationsStack.removeLast()
         return result
     }

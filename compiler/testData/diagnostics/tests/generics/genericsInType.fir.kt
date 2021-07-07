@@ -22,15 +22,15 @@ fun test() {
     Foo<String>.Bar::class
     Foo<String>.Bar.Baz::class
 
-    a<Foo<String>.Bar>()
-    a<<!WRONG_NUMBER_OF_TYPE_ARGUMENTS!>Foo<String>.Bar.Baz<!>>()
+    a<Foo<String>.<!WRONG_NUMBER_OF_TYPE_ARGUMENTS!>Bar<!>>()
+    a<Foo<!WRONG_NUMBER_OF_TYPE_ARGUMENTS!><String><!>.Bar.Baz>()
 
     a<Foo.Bar<Int>>()
-    a<<!WRONG_NUMBER_OF_TYPE_ARGUMENTS!>Foo.Bar<Int>.Baz<!>>()
+    a<Foo.Bar<!WRONG_NUMBER_OF_TYPE_ARGUMENTS!><Int><!>.Baz>()
 }
 
 fun <T: Foo<<!UNRESOLVED_REFERENCE!>String.Bar<!>>> x() {}
-fun Foo<String>.Bar.ext() {}
+fun Foo<String>.<!WRONG_NUMBER_OF_TYPE_ARGUMENTS!>Bar<!>.ext() {}
 
-fun ex1(a: <!WRONG_NUMBER_OF_TYPE_ARGUMENTS!>Foo<String>.Bar<String><!>): <!WRONG_NUMBER_OF_TYPE_ARGUMENTS!>Foo<String>.Bar<String><!> {
+fun ex1(a: Foo<!WRONG_NUMBER_OF_TYPE_ARGUMENTS!><String><!>.Bar<String>): Foo<!WRONG_NUMBER_OF_TYPE_ARGUMENTS!><String><!>.Bar<String> {
 }
