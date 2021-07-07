@@ -5,10 +5,7 @@
 
 package org.jetbrains.kotlin.backend.common.lower
 
-import org.jetbrains.kotlin.backend.common.BackendContext
-import org.jetbrains.kotlin.backend.common.FileLoweringPass
-import org.jetbrains.kotlin.backend.common.IrElementTransformerVoidWithContext
-import org.jetbrains.kotlin.backend.common.ir.addChild
+import org.jetbrains.kotlin.backend.common.*
 import org.jetbrains.kotlin.backend.common.ir.copyTo
 import org.jetbrains.kotlin.backend.common.ir.createImplicitParameterDeclarationWithWrappedDescriptor
 import org.jetbrains.kotlin.descriptors.DescriptorVisibilities
@@ -19,6 +16,7 @@ import org.jetbrains.kotlin.ir.builders.declarations.*
 import org.jetbrains.kotlin.ir.declarations.*
 import org.jetbrains.kotlin.ir.expressions.IrConstructorCall
 import org.jetbrains.kotlin.ir.expressions.IrExpression
+import org.jetbrains.kotlin.ir.expressions.IrGetValue
 import org.jetbrains.kotlin.ir.expressions.impl.IrConstructorCallImpl
 import org.jetbrains.kotlin.ir.expressions.impl.IrDelegatingConstructorCallImpl
 import org.jetbrains.kotlin.ir.expressions.impl.IrGetValueImpl
@@ -38,7 +36,10 @@ class AnnotationImplementationLowering(
     override fun lower(irFile: IrFile) {
         val tf = transformer(irFile)
         irFile.transformChildrenVoid(tf)
-        tf.implementations.values.forEach { irFile.addChild(it) }
+        tf.implementations.values.forEach {
+            val parentClass = it.parent as IrDeclarationContainer
+            parentClass.declarations += it
+        }
     }
 }
 
@@ -67,14 +68,18 @@ open class AnnotationImplementationTransformer(val context: BackendContext, val 
     }
 
     private fun createAnnotationImplementation(annotationClass: IrClass): IrClass {
+        val localDeclarationParent = currentClass?.scope?.getLocalDeclarationParent() as? IrClass
         val parentFqName = annotationClass.fqNameWhenAvailable!!.asString().replace('.', '_')
-        val wrapperName = Name.identifier("annotationImpl\$$parentFqName\$0")
+        val wrapperName = Name.identifier("annotationImpl\$$parentFqName$0")
         val subclass = context.irFactory.buildClass {
             name = wrapperName
             origin = ANNOTATION_IMPLEMENTATION
-            visibility = DescriptorVisibilities.PRIVATE
+            // It can be seen from inline functions and multiple classes within one file
+            // JavaDescriptorVisibilities.PACKAGE_VISIBILITY also can be used here, like in SAM, but that's not a big difference
+            // since declaration is synthetic anyway
+            visibility = DescriptorVisibilities.INTERNAL
         }.apply {
-            parent = currentClass?.scope?.getLocalDeclarationParent() ?: irFile
+            parent = localDeclarationParent ?: irFile
             createImplicitParameterDeclarationWithWrappedDescriptor()
             superTypes = listOf(annotationClass.defaultType)
         }
@@ -100,7 +105,7 @@ open class AnnotationImplementationTransformer(val context: BackendContext, val 
 
         generatedConstructor.body = ctorBody
 
-        val properties = annotationClass.declarations.filterIsInstance<IrProperty>()
+        val properties = annotationClass.getAnnotationProperties()
 
         return properties.map { property ->
 
@@ -115,6 +120,11 @@ open class AnnotationImplementationTransformer(val context: BackendContext, val 
             }.also { it.parent = implClass }
 
             val parameter = generatedConstructor.addValueParameter(propName.asString(), propType)
+            // VALUE_FROM_PARAMETER
+            val originalParameter = ((property.backingField?.initializer?.expression as? IrGetValue)?.symbol?.owner as? IrValueParameter)
+            if (originalParameter?.defaultValue != null) {
+                parameter.defaultValue = originalParameter.defaultValue!!.deepCopyWithVariables().also { it.transformChildrenVoid() }
+            }
 
             ctorBody.statements += IrSetFieldImpl(
                 startOffset, endOffset, field.symbol,
@@ -136,7 +146,7 @@ open class AnnotationImplementationTransformer(val context: BackendContext, val 
                 name = propName  // Annotation value getter should be named 'x', not 'getX'
                 returnType = propType.kClassToJClassIfNeeded() // On JVM, annotation store j.l.Class even if declared with KClass
                 origin = ANNOTATION_IMPLEMENTATION
-                visibility = property.visibility
+                visibility = DescriptorVisibilities.PUBLIC
                 modality = Modality.FINAL
             }.apply {
                 dispatchReceiverParameter = implClass.thisReceiver!!.copyTo(this)
@@ -150,6 +160,15 @@ open class AnnotationImplementationTransformer(val context: BackendContext, val 
             prop
         }
 
+    }
+
+    fun IrClass.getAnnotationProperties(): List<IrProperty> {
+        // For some weird reason, annotations defined in other IrFiles, do not have IrProperties in declarations.
+        // (although annotations imported from Java do have)
+        val props = declarations.filterIsInstance<IrProperty>()
+        if (props.isNotEmpty()) return props
+        return declarations.filterIsInstance<IrSimpleFunction>().filter { it.origin == IrDeclarationOrigin.DEFAULT_PROPERTY_ACCESSOR }
+            .mapNotNull { it.correspondingPropertySymbol?.owner }
     }
 
     open fun IrType.kClassToJClassIfNeeded(): IrType = this

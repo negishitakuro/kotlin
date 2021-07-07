@@ -384,6 +384,12 @@ public class IrBlackBoxCodegenTestGenerated extends AbstractIrBlackBoxCodegenTes
             }
 
             @Test
+            @TestMetadata("annotationEnclosingName.kt")
+            public void testAnnotationEnclosingName() throws Exception {
+                runTest("compiler/testData/codegen/box/annotations/instances/annotationEnclosingName.kt");
+            }
+
+            @Test
             @TestMetadata("annotationEqHc.kt")
             public void testAnnotationEqHc() throws Exception {
                 runTest("compiler/testData/codegen/box/annotations/instances/annotationEqHc.kt");
@@ -396,6 +402,12 @@ public class IrBlackBoxCodegenTestGenerated extends AbstractIrBlackBoxCodegenTes
             }
 
             @Test
+            @TestMetadata("annotationInstancesEmptyDefault.kt")
+            public void testAnnotationInstancesEmptyDefault() throws Exception {
+                runTest("compiler/testData/codegen/box/annotations/instances/annotationInstancesEmptyDefault.kt");
+            }
+
+            @Test
             @TestMetadata("annotationToString.kt")
             public void testAnnotationToString() throws Exception {
                 runTest("compiler/testData/codegen/box/annotations/instances/annotationToString.kt");
@@ -405,6 +417,18 @@ public class IrBlackBoxCodegenTestGenerated extends AbstractIrBlackBoxCodegenTes
             @TestMetadata("annotationType.kt")
             public void testAnnotationType() throws Exception {
                 runTest("compiler/testData/codegen/box/annotations/instances/annotationType.kt");
+            }
+
+            @Test
+            @TestMetadata("instanceInlining.kt")
+            public void testInstanceInlining() throws Exception {
+                runTest("compiler/testData/codegen/box/annotations/instances/instanceInlining.kt");
+            }
+
+            @Test
+            @TestMetadata("javaAnnotation.kt")
+            public void testJavaAnnotation() throws Exception {
+                runTest("compiler/testData/codegen/box/annotations/instances/javaAnnotation.kt");
             }
         }
 
