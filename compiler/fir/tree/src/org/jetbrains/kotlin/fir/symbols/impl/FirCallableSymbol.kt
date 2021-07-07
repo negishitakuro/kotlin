@@ -44,6 +44,12 @@ abstract class FirCallableSymbol<D : FirCallableDeclaration> : FirBasedSymbol<D>
     val name: Name
         get() = callableId.callableName
 
+    val deprecation: DeprecationsPerUseSite?
+        get() {
+            ensureResolved(FirResolvePhase.STATUS)
+            return fir.deprecation
+        }
+
     protected fun ensureRegularType(typeRef: FirTypeRef?) {
         when (typeRef) {
             null, is FirResolvedTypeRef -> {}

@@ -70,9 +70,9 @@ object FirImplementationMismatchChecker : FirClassChecker() {
         symbol: FirCallableSymbol<*>,
         classScope: FirTypeScope
     ) {
-        fun reportTypeMismatch(member1: FirCallableDeclaration, member2: FirCallableDeclaration, isDelegation: Boolean) {
+        fun reportTypeMismatch(member1: FirCallableSymbol<*>, member2: FirCallableSymbol<*>, isDelegation: Boolean) {
             val error = when {
-                member1 is FirProperty && member2 is FirProperty -> {
+                member1 is FirPropertySymbol && member2 is FirPropertySymbol -> {
                     if (member1.isVar || member2.isVar) {
                         FirErrors.VAR_TYPE_MISMATCH_ON_INHERITANCE
                     } else {
@@ -89,20 +89,20 @@ object FirImplementationMismatchChecker : FirClassChecker() {
         }
 
         fun canOverride(
-            inheritedMember: FirCallableDeclaration,
+            inheritedMember: FirCallableSymbol<*>,
             inheritedType: ConeKotlinType,
-            baseMember: FirCallableDeclaration,
+            baseMember: FirCallableSymbol<*>,
             baseType: ConeKotlinType
         ): Boolean {
             val inheritedTypeSubstituted = inheritedType.substituteTypeParameters(inheritedMember, baseMember, context)
-            return if (baseMember is FirProperty && baseMember.isVar)
+            return if (baseMember is FirPropertySymbol && baseMember.isVar)
                 AbstractTypeChecker.equalTypes(typeCheckerContext, inheritedTypeSubstituted, baseType)
             else
                 AbstractTypeChecker.isSubtypeOf(typeCheckerContext, inheritedTypeSubstituted, baseType)
         }
 
         val intersectionSymbols = when {
-            symbol.fir.delegatedWrapperData != null ->
+            symbol.delegatedWrapperData != null ->
                 classScope.getDirectOverriddenMembers(symbol) + symbol
             symbol is FirIntersectionCallableSymbol && symbol.callableId.classId == containingClass.classId ->
                 symbol.intersections
@@ -110,26 +110,25 @@ object FirImplementationMismatchChecker : FirClassChecker() {
         }
 
         val withTypes = intersectionSymbols.map {
-            it.fir to context.returnTypeCalculator.tryCalculateReturnType(it.fir).coneType
+            it to context.returnTypeCalculator.tryCalculateReturnType(it).coneType
         }
 
         if (withTypes.any { it.second is ConeKotlinErrorType }) return
 
-        var delegation: FirCallableDeclaration? = null
-        val implementations = mutableListOf<FirCallableDeclaration>()
+        var delegation: FirCallableSymbol<*>? = null
+        val implementations = mutableListOf<FirCallableSymbol<*>>()
 
         for (intSymbol in intersectionSymbols) {
-            val fir = intSymbol.fir
-            if (fir.delegatedWrapperData?.containingClass?.classId == containingClass.classId) {
-                delegation = fir
+            if (intSymbol.delegatedWrapperData?.containingClass?.classId == containingClass.classId) {
+                delegation = intSymbol
                 break
             }
-            if (!(fir as FirCallableMemberDeclaration).isAbstract) {
-                implementations.add(fir)
+            if (!intSymbol.isAbstract) {
+                implementations.add(intSymbol)
             }
         }
 
-        var someClash: Pair<FirCallableDeclaration, FirCallableDeclaration>? = null
+        var someClash: Pair<FirCallableSymbol<*>, FirCallableSymbol<*>>? = null
         val compatible = withTypes.any { (m1, type1) ->
             withTypes.all { (m2, type2) ->
                 val result = canOverride(m1, type1, m2, type2)
@@ -163,15 +162,15 @@ object FirImplementationMismatchChecker : FirClassChecker() {
         symbol: FirVariableSymbol<*>,
         classScope: FirTypeScope
     ) {
-        if (symbol !is FirPropertySymbol || symbol.fir.isVar) return
-        if (symbol.fir.delegatedWrapperData == null) return
+        if (symbol !is FirPropertySymbol || symbol.isVar) return
+        if (symbol.delegatedWrapperData == null) return
 
         val overriddenVar =
             classScope.getDirectOverriddenProperties(symbol, true)
-                .find { it.fir.isVar }
+                .find { it.isVar }
                 ?: return
 
-        reporter.reportOn(containingClass.source, FirErrors.VAR_OVERRIDDEN_BY_VAL_BY_DELEGATION, symbol.fir, overriddenVar.fir, context)
+        reporter.reportOn(containingClass.source, FirErrors.VAR_OVERRIDDEN_BY_VAL_BY_DELEGATION, symbol, overriddenVar, context)
     }
 
     private fun checkConflictingMembers(
@@ -181,23 +180,23 @@ object FirImplementationMismatchChecker : FirClassChecker() {
         scope: FirTypeScope,
         name: Name
     ) {
-        val allFunctions = mutableListOf<FirSimpleFunction>()
+        val allFunctions = mutableListOf<FirNamedFunctionSymbol>()
         scope.processFunctionsByName(name) { sym ->
             val declaredInThisClass = sym.callableId.classId == containingClass.classId
             when {
                 sym is FirIntersectionOverrideFunctionSymbol && declaredInThisClass ->
-                    sym.intersections.mapNotNullTo(allFunctions) { (it as? FirNamedFunctionSymbol)?.fir }
-                !declaredInThisClass -> allFunctions.add(sym.fir)
+                    sym.intersections.mapNotNullTo(allFunctions) { it as? FirNamedFunctionSymbol }
+                !declaredInThisClass -> allFunctions.add(sym)
             }
         }
 
         val sameArgumentGroups = allFunctions.groupBy { function ->
-            function.valueParameters.map { it.returnTypeRef.coneType }
+            function.valueParameterSymbols.map { it.resolvedReturnTypeRef.coneType }
         }.values
 
         val clashes = sameArgumentGroups.mapNotNull { fs ->
             fs.zipWithNext().find { (m1, m2) ->
-                m1.isSuspend != m2.isSuspend || m1.typeParameters.size != m2.typeParameters.size
+                m1.isSuspend != m2.isSuspend || m1.typeParameterSymbols.size != m2.typeParameterSymbols.size
             }
         }
 
@@ -207,15 +206,15 @@ object FirImplementationMismatchChecker : FirClassChecker() {
     }
 
     private fun ConeKotlinType.substituteTypeParameters(
-        fromDeclaration: FirCallableDeclaration,
-        toDeclaration: FirCallableDeclaration,
+        fromDeclaration: FirCallableSymbol<*>,
+        toDeclaration: FirCallableSymbol<*>,
         context: CheckerContext
     ): ConeKotlinType {
-        val fromParams = (fromDeclaration as? FirTypeParametersOwner)?.typeParameters ?: return this
-        val toParams = (toDeclaration as? FirTypeParametersOwner)?.typeParameters ?: return this
+        val fromParams = fromDeclaration.typeParameterSymbols
+        val toParams = toDeclaration.typeParameterSymbols
 
         val substitutionMap = fromParams.zip(toParams) { from, to ->
-            from.symbol to to.toConeType()
+            from to to.toConeType()
         }.toMap()
 
         return substitutorByMap(substitutionMap, context.session).substituteOrSelf(this)
