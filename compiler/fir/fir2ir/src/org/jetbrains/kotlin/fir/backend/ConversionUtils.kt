@@ -194,10 +194,10 @@ private fun FirCallableSymbol<*>.toSymbolForCall(declarationStorage: Fir2IrDecla
                 delegateSymbol.unwrapCallRepresentative().toSymbolForCall(declarationStorage, preferGetter)
             } ?: declarationStorage.getIrPropertySymbol(this)
         }
-        is FirPropertySymbol -> declarationStorage.getIrPropertySymbol(this)
-        is FirFieldSymbol -> declarationStorage.getIrFieldSymbol(this)
         is FirBackingFieldSymbol -> declarationStorage.getIrBackingFieldSymbol(this)
         is FirDelegateFieldSymbol -> declarationStorage.getIrBackingFieldSymbol(this)
+        is FirPropertySymbol -> declarationStorage.getIrPropertySymbol(this)
+        is FirFieldSymbol -> declarationStorage.getIrFieldSymbol(this)
         is FirVariableSymbol<*> -> declarationStorage.getIrValueSymbol(this)
         else -> null
     }
