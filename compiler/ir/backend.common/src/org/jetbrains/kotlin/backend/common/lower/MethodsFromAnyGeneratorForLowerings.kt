@@ -70,7 +70,7 @@ class MethodsFromAnyGeneratorForLowerings(val context: BackendContext, val irCla
         override val intTimesSymbol: IrSimpleFunctionSymbol =
             context.irBuiltIns.intClass.functions.single { it.owner.name.asString() == "times" && it.owner.valueParameters[0].type == context.irBuiltIns.intType }
 
-        override fun getHashCodeFunctionInfo(type: IrType): DataClassMembersGenerator.HashCodeFunctionInfo {
+        override fun getHashCodeFunctionInfo(type: IrType): HashCodeFunctionInfo {
             val symbol = if (type.isArray() || type.isPrimitiveArray()) {
                 context.irBuiltIns.dataClassArrayMemberHashCodeSymbol
             } else {

@@ -46,9 +46,6 @@ class AnnotationImplementationLowering(
 open class AnnotationImplementationTransformer(val context: BackendContext, val irFile: IrFile) : IrElementTransformerVoidWithContext() {
     internal val implementations: MutableMap<IrClass, IrClass> = mutableMapOf()
 
-    private var startOffset = UNDEFINED_OFFSET
-    private var endOffset = UNDEFINED_OFFSET
-
     override fun visitConstructorCall(expression: IrConstructorCall): IrExpression {
         val constructedClass = expression.type.classOrNull?.owner ?: return expression
         if (!constructedClass.isAnnotationClass) return expression
@@ -95,9 +92,9 @@ open class AnnotationImplementationTransformer(val context: BackendContext, val 
 
     fun implementAnnotationProperties(implClass: IrClass, annotationClass: IrClass, generatedConstructor: IrConstructor): List<IrProperty> {
         val ctorBody = context.irFactory.createBlockBody(
-            startOffset, endOffset, listOf(
+            UNDEFINED_OFFSET, UNDEFINED_OFFSET, listOf(
                 IrDelegatingConstructorCallImpl(
-                    startOffset, endOffset, context.irBuiltIns.unitType, context.irBuiltIns.anyClass.constructors.single(),
+                    UNDEFINED_OFFSET, UNDEFINED_OFFSET, context.irBuiltIns.unitType, context.irBuiltIns.anyClass.constructors.single(),
                     typeArgumentsCount = 0, valueArgumentsCount = 0
                 )
             )
@@ -127,9 +124,9 @@ open class AnnotationImplementationTransformer(val context: BackendContext, val 
             }
 
             ctorBody.statements += IrSetFieldImpl(
-                startOffset, endOffset, field.symbol,
-                IrGetValueImpl(startOffset, endOffset, implClass.thisReceiver!!.symbol),
-                IrGetValueImpl(startOffset, endOffset, parameter.symbol),
+                UNDEFINED_OFFSET, UNDEFINED_OFFSET, field.symbol,
+                IrGetValueImpl(UNDEFINED_OFFSET, UNDEFINED_OFFSET, implClass.thisReceiver!!.symbol),
+                IrGetValueImpl(UNDEFINED_OFFSET, UNDEFINED_OFFSET, parameter.symbol),
                 context.irBuiltIns.unitType,
             )
 
