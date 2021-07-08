@@ -140,6 +140,8 @@ KStdVector<KStdString> kotlin::GetStackTraceStrings(void* const* stackTrace, siz
             SourceInfo buffer[10];
             int frames = getSourceInfo(address, buffer, std::size(buffer));
             const char* symbol = symbols[index];
+            // returned symbol starts with frame number
+            // we need to override it, because of inlining, so let's just drop first token
             while (*symbol != ' ') symbol++;
             while (*symbol == ' ') symbol++;
             bool isSomethingPrinted = false;
