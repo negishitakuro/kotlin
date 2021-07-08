@@ -10,17 +10,6 @@ dependencies {
     testImplementation("junit:junit:4.12")
 }
 
-sourceSets {
-    "main" { projectDefault() }
-    "test" {
-        if (kotlinBuildProperties.isJpsBuildEnabled || kotlinBuildProperties.useFir) {
-            none()
-        } else {
-            projectDefault()
-        }
-    }
-}
-
 projectTest {
     workingDir = rootDir
 }
