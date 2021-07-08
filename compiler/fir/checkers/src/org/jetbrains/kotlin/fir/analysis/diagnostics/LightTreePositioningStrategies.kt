@@ -780,6 +780,29 @@ object LightTreePositioningStrategies {
             return markElement(nodeToMark, startOffset, endOffset, tree, node)
         }
     }
+
+    val DECLARATION_WITH_BODY: LightTreePositioningStrategy = object : LightTreePositioningStrategy() {
+        override fun mark(
+            node: LighterASTNode,
+            startOffset: Int,
+            endOffset: Int,
+            tree: FlyweightCapableTreeStructure<LighterASTNode>
+        ): List<TextRange> {
+            val blockNode =
+                if (node.tokenType != KtNodeTypes.BLOCK) tree.findChildByType(node, KtNodeTypes.BLOCK)
+                else node
+            val bracket = tree.findLastChildByType(blockNode ?: node, KtTokens.RBRACE)
+            return when {
+                bracket != null -> markElement(bracket, startOffset, endOffset, tree, node)
+                blockNode != null -> markElement(blockNode, startOffset, endOffset, tree, node).map(::lastSymbol)
+                else -> super.mark(node, startOffset, endOffset, tree)
+            }
+        }
+
+        //body of block node is in the separate tree, so here is hack - mark last symbol of block
+        private fun lastSymbol(range: TextRange): TextRange =
+            if (range.isEmpty) range else TextRange.create(range.endOffset - 1, range.endOffset)
+    }
 }
 
 fun FirSourceElement.hasValOrVar(): Boolean =
