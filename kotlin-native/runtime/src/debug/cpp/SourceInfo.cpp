@@ -128,6 +128,7 @@ typedef struct {
 } SymbolSourceInfoLimits;
 
 extern "C" int Kotlin_getSourceInfo(void* addr, SourceInfo *result_buffer, int result_size) {
+  if (result_size == 0) return 0;
   __block SourceInfo inlinedTo = { .fileName = nullptr, .lineNumber = -1, .column = -1 };
   __block SourceInfo inlinedFrom = { .fileName = nullptr, .lineNumber = -1, .column = -1 };
   __block bool continueUpdateResult = true;
