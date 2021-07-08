@@ -202,7 +202,7 @@ public value class Duration internal constructor(private val rawValue: Long) : C
         }
 
         /**
-         * Parses a string that represents a duration and returns the parsed [Duration] value
+         * Parses a string that represents a duration and returns the parsed [Duration] value,
          * or `null` if the string doesn't represent a duration in any of the supported formats.
          *
          * The following formats are accepted:
@@ -219,7 +219,7 @@ public value class Duration internal constructor(private val rawValue: Long) : C
         }
 
         /**
-         * Parses a string that represents a duration in ISO-8601 format and returns the parsed [Duration] value
+         * Parses a string that represents a duration in ISO-8601 format and returns the parsed [Duration] value,
          * or `null` if the string doesn't represent a duration in ISO-8601 format.
          */
         @SinceKotlin("1.5")
