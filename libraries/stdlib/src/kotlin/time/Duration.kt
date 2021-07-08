@@ -702,7 +702,7 @@ public value class Duration internal constructor(private val rawValue: Long) : C
      * The last component, usually seconds, can be a number with a fractional part.
      *
      * If the duration is less than a second, it is represented as a single number
-     * with one of sub-second units: `ms`, `us`, or `ns`:
+     * with one of sub-second units: `ms` (milliseconds), `us` (microseconds), or `ns` (nanoseconds):
      * `140.884ms`, `500us`, `24ns`.
      *
      * A negative duration is prefixed with `-` sign and, if it consists of multiple components, surrounded with parentheses:
