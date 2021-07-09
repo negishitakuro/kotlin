@@ -43,7 +43,7 @@ class PersistentCheckerContext private constructor(
         allErrorsSuppressed = false
     )
 
-    override fun addImplicitReceiver(name: Name?, value: ImplicitReceiverValue<*>): PersistentCheckerContext {
+    fun addImplicitReceiver(name: Name?, value: ImplicitReceiverValue<*>): PersistentCheckerContext {
         return PersistentCheckerContext(
             implicitReceiverStack.add(name, value),
             containingDeclarations,
@@ -58,7 +58,7 @@ class PersistentCheckerContext private constructor(
         )
     }
 
-    override fun addDeclaration(declaration: FirDeclaration): PersistentCheckerContext {
+    fun addDeclaration(declaration: FirDeclaration): PersistentCheckerContext {
         return PersistentCheckerContext(
             implicitReceiverStack,
             containingDeclarations.add(declaration),
@@ -73,10 +73,7 @@ class PersistentCheckerContext private constructor(
         )
     }
 
-    override fun dropDeclaration() {
-    }
-
-    override fun addQualifiedAccessOrAnnotationCall(qualifiedAccessOrAnnotationCall: FirStatement): PersistentCheckerContext {
+    fun addQualifiedAccessOrAnnotationCall(qualifiedAccessOrAnnotationCall: FirStatement): PersistentCheckerContext {
         return PersistentCheckerContext(
             implicitReceiverStack,
             containingDeclarations,
@@ -91,10 +88,7 @@ class PersistentCheckerContext private constructor(
         )
     }
 
-    override fun dropQualifiedAccessOrAnnotationCall() {
-    }
-
-    override fun addGetClassCall(getClassCall: FirGetClassCall): PersistentCheckerContext {
+    fun addGetClassCall(getClassCall: FirGetClassCall): PersistentCheckerContext {
         return PersistentCheckerContext(
             implicitReceiverStack,
             containingDeclarations,
@@ -107,9 +101,6 @@ class PersistentCheckerContext private constructor(
             allWarningsSuppressed,
             allErrorsSuppressed
         )
-    }
-
-    override fun dropGetClassCall() {
     }
 
     override fun addSuppressedDiagnostics(
