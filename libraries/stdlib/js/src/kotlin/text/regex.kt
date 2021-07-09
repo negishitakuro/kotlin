@@ -20,6 +20,8 @@ public actual enum class RegexOption(val value: String) {
     MULTILINE("m")
 }
 
+private fun Iterable<RegexOption>.toFlags(prepend: String): String = joinToString("", prefix = prepend) { it.value }
+
 
 /**
  * Represents the results from a single capturing group within a [MatchResult] of [Regex].
@@ -51,11 +53,10 @@ public actual class Regex actual constructor(pattern: String, options: Set<Regex
     public actual val pattern: String = pattern
     /** The set of options that were used to create this regular expression. */
     public actual val options: Set<RegexOption> = options.toSet()
-    private val nativePattern: RegExp = RegExp(pattern, options.joinToString(separator = "", prefix = "gu") { it.value })
+    private val nativePattern: RegExp = RegExp(pattern, options.toFlags("gu"))
     private var nativeStickyPattern: RegExp? = null
     private fun initStickyPattern(): RegExp =
-        nativeStickyPattern ?:
-            RegExp(pattern, options.joinToString(separator = "", prefix = "guy") { it.value }).also { nativeStickyPattern = it }
+        nativeStickyPattern ?: RegExp(pattern, options.toFlags("yu")).also { nativeStickyPattern = it }
 
 
     /** Indicates whether the regular expression matches the entire [input]. */
